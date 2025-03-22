@@ -53,7 +53,7 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 		}
 	}()
 
-	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS `+messagesTableName+` (
+	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+messagesTableName+`' (
 		'offset' INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		uuid TEXT NOT NULL,
 		created_at TEXT NOT NULL,
@@ -64,7 +64,7 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS `+offsetsTableName+` (
+	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+offsetsTableName+`' (
 		consumer_group TEXT NOT NULL,
 		offset_acked INTEGER NOT NULL,
 		offset_consumed INTEGER NOT NULL,

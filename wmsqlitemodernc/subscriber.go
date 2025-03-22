@@ -16,6 +16,11 @@ var (
 	ErrClosed = errors.New("subscriber is closed")
 )
 
+type Subscriber interface {
+	message.Subscriber
+	Unsubscribe(topic string) error
+}
+
 type SubscriberConfiguration struct {
 	ConsumerGroup             string
 	GenerateMessagesTableName TableNameGenerator
@@ -37,7 +42,7 @@ type subscriber struct {
 	subscriptionsByTopic map[string]*subscription
 }
 
-func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
+func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	return &subscriber{
@@ -91,7 +96,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	}
 
 	_, err = db.ExecContext(ctx, fmt.Sprintf(`
-		INSERT INTO %s (consumer_group, offset_acked, offset_consumed)
+		INSERT INTO '%s' (consumer_group, offset_acked, offset_consumed)
 		VALUES ("%s", 0, 0)
 		ON CONFLICT(consumer_group) DO NOTHING;
 	`, offsetsTableName, s.consumerGroup))
@@ -106,16 +111,15 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT
 				"offset", uuid, created_at, payload, metadata
-			FROM %s
+			FROM '%s'
 			WHERE "offset" > (
-				SELECT offset_acked FROM %s WHERE consumer_group = "%s"
+				SELECT offset_acked FROM '%s' WHERE consumer_group = "%s"
 			)
 			ORDER BY offset LIMIT 10;
 		`, messagesTableName, offsetsTableName, s.consumerGroup),
 		sqlAcknowledgeMessage: fmt.Sprintf(`
-			UPDATE %s SET offset_acked = ? WHERE consumer_group = "%s" AND offset_acked = ?;
+			UPDATE '%s' SET offset_acked = ? WHERE consumer_group = "%s" AND offset_acked = ?;
 		`, offsetsTableName, s.consumerGroup),
-		// acknowledgement:        make(chan bool),
 		destination: make(chan *message.Message),
 		logger:      s.logger, // TODO: logger.With
 	}
@@ -139,7 +143,11 @@ func (s *subscriber) Unsubscribe(topic string) error {
 }
 
 func (s *subscriber) Close() (err error) {
+	if s.closed == nil {
+		return nil
+	}
 	close(s.closed)
+	s.closed = nil
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sub := range s.subscriptionsByTopic {

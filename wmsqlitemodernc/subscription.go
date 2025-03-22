@@ -23,9 +23,9 @@ type subscription struct {
 
 func (s *subscription) nextMessageBatch() (*sql.Rows, error) {
 	// TODO: customize parent context and query time out duration
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	return s.db.QueryContext(ctx, s.sqlNextMessageBatch)
+	// ctx, cancel := context.WithTimeout(context.Background(), time.Second*9)
+	// defer cancel()
+	return s.db.QueryContext(context.Background(), s.sqlNextMessageBatch)
 }
 
 func (s *subscription) emmitMessage(
@@ -64,11 +64,17 @@ func (s *subscription) Loop(closed <-chan struct{}) {
 
 top:
 	for {
+		select {
+		case <-closed:
+			return
+		case <-s.ticker.C:
+		}
+
 		rows, err = s.nextMessageBatch()
 		if err != nil {
-			if errors.Is(err, sql.ErrConnDone) {
-				panic("connection close")
-			}
+			// if errors.Is(err, sql.ErrConnDone) {
+			// 	panic("connection close")
+			// }
 			s.logger.Error("failed to fetch next message batch", err, nil)
 			continue
 		}
@@ -114,12 +120,6 @@ top:
 		}
 		if err = rows.Close(); err != nil {
 			s.logger.Error("failed to close rows", err, nil)
-		}
-
-		select {
-		case <-closed:
-			return
-		case <-s.ticker.C:
 		}
 	}
 }

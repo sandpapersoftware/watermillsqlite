@@ -12,7 +12,7 @@ import (
 func TestSubscriber(t *testing.T) {
 	topic := "test_topic"
 	// connector := NewEphemeralConnector()
-	connector := NewConnector("file:../mydata.sqlite?_pragma=foreign_keys(1)&_time_format=sqlite&&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared")
+	connector := NewConnector("file:../test.sqlite?_pragma=foreign_keys(1)&_time_format=sqlite&&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared")
 	pub, err := NewPublisher(PublisherConfiguration{
 		Connector: connector,
 	})
@@ -26,7 +26,6 @@ func TestSubscriber(t *testing.T) {
 	})
 
 	t.Run("publish some messages", func(t *testing.T) {
-		t.Parallel()
 		for range 10 {
 			msg := message.NewMessage(uuid.New().String(), []byte("test"))
 			msg2 := message.NewMessage(uuid.New().String(), []byte("test"))
@@ -56,9 +55,7 @@ func TestSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := sub.(interface {
-			Unsubscribe(string) error
-		}).Unsubscribe(topic); err != nil {
+		if err := sub.Unsubscribe(topic); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -76,29 +73,26 @@ func TestSubscriber(t *testing.T) {
 		}
 	}
 
-	end := time.After(time.Second * 2)
+	end := time.After(time.Second * 4)
+	processed := 0
+
+loop:
 	for {
 		select {
 		case <-end:
-			return
+			break loop
 		case msg := <-msgs:
 			if msg == nil {
 				t.Fatal("message is nil")
 			}
+			processed++
 			msg.Ack()
 			if string(msg.Payload) != "test" {
 				t.Fatalf("unexpected message payload: %s", string(msg.Payload))
 			}
 		}
 	}
-
-	// for msg := range msgs {
-	// 	if msg == nil {
-	// 		t.Fatal("message is nil")
-	// 	}
-	// 	msg.Ack()
-	// 	if string(msg.Payload) != "test" {
-	// 		t.Fatalf("unexpected message payload: %s", string(msg.Payload))
-	// 	}
-	// }
+	if processed != 19 {
+		t.Fatalf("expected 19 messages, got %d", processed)
+	}
 }

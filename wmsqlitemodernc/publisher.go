@@ -95,7 +95,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 
 		if _, err = tx.ExecContext(
 			msg.Context(),
-			"INSERT INTO "+messagesTableName+" (uuid, created_at, payload, metadata) VALUES (?, ?, ?, ?);",
+			"INSERT INTO '"+messagesTableName+"' (uuid, created_at, payload, metadata) VALUES (?, ?, ?, ?);",
 			msg.UUID,
 			time.Now().Format(time.RFC3339),
 			msg.Payload,
