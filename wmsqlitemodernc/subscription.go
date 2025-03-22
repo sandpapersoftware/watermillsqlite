@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -21,11 +23,51 @@ type subscription struct {
 	logger      watermill.LoggerAdapter
 }
 
-func (s *subscription) nextMessageBatch() (*sql.Rows, error) {
+func (s *subscription) nextMessageBatch(ctx context.Context) (result []*message.Message, err error) {
 	// TODO: customize parent context and query time out duration
-	// ctx, cancel := context.WithTimeout(context.Background(), time.Second*9)
-	// defer cancel()
-	return s.db.QueryContext(context.Background(), s.sqlNextMessageBatch)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*9)
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, s.sqlNextMessageBatch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query next message batch: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
+
+	for rows.Next() {
+		offset := int64(0)
+		uuid := ""
+		payload := []byte{}
+		metadata := []byte{}
+		metadataParsed := make(map[string]string)
+		createdAt := ""
+
+		// "offset", uuid, created_at, payload, metadata
+		err = rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message row: %w", err)
+		}
+		msg := message.NewMessage(uuid, payload)
+		msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
+		msg.Metadata.Set("createdAt", createdAt)
+		if metadata != nil {
+			err = json.Unmarshal(metadata, &metadataParsed)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+			for k, v := range metadataParsed {
+				msg.Metadata.Set(k, v)
+			}
+		}
+		result = append(result, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate message rows: %w", err)
+	}
+
+	return
 }
 
 func (s *subscription) emmitMessage(
@@ -48,18 +90,6 @@ func (s *subscription) emmitMessage(
 }
 
 func (s *subscription) Loop(closed <-chan struct{}) {
-	var (
-		rows           *sql.Rows
-		err            error
-		offset         int64
-		uuid           string
-		payload        []byte
-		metadataParsed map[string]string
-		metadata       []byte
-		createdAt      string
-		// createdAtParsed time.Time
-		acknowledged bool
-	)
 	// TODO: defer close
 
 top:
@@ -70,7 +100,7 @@ top:
 		case <-s.ticker.C:
 		}
 
-		rows, err = s.nextMessageBatch()
+		msgs, err := s.nextMessageBatch(context.Background())
 		if err != nil {
 			// if errors.Is(err, sql.ErrConnDone) {
 			// 	panic("connection close")
@@ -78,48 +108,22 @@ top:
 			s.logger.Error("failed to fetch next message batch", err, nil)
 			continue
 		}
-
-		for rows.Next() {
-			// offset, uuid, created_at, payload, metadata
-			if err := rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata); err != nil {
-				s.logger.Error("failed to scan row", errors.Join(err, rows.Close()), nil)
-				continue top
+		for _, msg := range msgs {
+			offset, err := strconv.ParseInt(msg.Metadata.Get("offset"), 10, 64)
+			if err != nil {
+				s.logger.Error("failed to parse offset", err, nil)
+				continue
 			}
-
-			// if createdAtParsed, err = time.Parse(time.RFC3339, createdAt); err != nil {
-			// 	s.logger.Error("failed to parse created_at", errors.Join(err, rows.Close()), nil)
-			// 	continue top
-			// }
-			if err = json.Unmarshal(metadata, &metadataParsed); err != nil {
-				s.logger.Error("failed to unmarshal metadata", errors.Join(err, rows.Close()), nil)
-				continue top
-			}
-
-			msg := message.NewMessage(uuid, payload)
-			for key, value := range metadataParsed {
-				msg.Metadata.Set(key, value)
-			}
-			// msg.Metadata.Set("timestamp", createdAtParsed.String())
-			msg.Metadata.Set("timestamp", createdAt)
-
-			acknowledged = s.emmitMessage(closed, msg)
-			if acknowledged {
+			if s.emmitMessage(closed, msg) {
 				if _, err = s.db.Exec(s.sqlAcknowledgeMessage, offset, offset-1); err != nil {
 					s.logger.Error("failed to acknowledge message", err, nil)
-					<-s.ticker.C
+					// panic(err)
+					// <-s.ticker.C
 					continue top
 				}
 				// <-s.ticker.C
 				// panic(offset)
 			}
-		}
-
-		if err := rows.Err(); err != nil {
-			s.logger.Error("failed to iterate message rows", err, nil)
-			continue
-		}
-		if err = rows.Close(); err != nil {
-			s.logger.Error("failed to close rows", err, nil)
 		}
 	}
 }

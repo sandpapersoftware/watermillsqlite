@@ -23,6 +23,7 @@ type Subscriber interface {
 
 type SubscriberConfiguration struct {
 	ConsumerGroup             string
+	BatchSize                 int
 	GenerateMessagesTableName TableNameGenerator
 	GenerateOffsetsTableName  TableNameGenerator
 	Connector                 Connector
@@ -32,6 +33,7 @@ type SubscriberConfiguration struct {
 
 type subscriber struct {
 	consumerGroup             string
+	batchSize                 int
 	connector                 Connector
 	closed                    chan struct{}
 	generateMessagesTableName TableNameGenerator
@@ -45,8 +47,10 @@ type subscriber struct {
 func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
+	// TODO: validate batch size
 	return &subscriber{
 		consumerGroup: cfg.ConsumerGroup,
+		batchSize:     cmp.Or(cfg.BatchSize, 10),
 		connector:     cfg.Connector,
 		closed:        make(chan struct{}),
 		generateMessagesTableName: cmp.Or(
@@ -115,8 +119,8 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 			WHERE "offset" > (
 				SELECT offset_acked FROM '%s' WHERE consumer_group = "%s"
 			)
-			ORDER BY offset LIMIT 10;
-		`, messagesTableName, offsetsTableName, s.consumerGroup),
+			ORDER BY offset LIMIT %d;
+		`, messagesTableName, offsetsTableName, s.consumerGroup, s.batchSize),
 		sqlAcknowledgeMessage: fmt.Sprintf(`
 			UPDATE '%s' SET offset_acked = ? WHERE consumer_group = "%s" AND offset_acked = ?;
 		`, offsetsTableName, s.consumerGroup),
