@@ -100,7 +100,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	}
 
 	_, err = db.ExecContext(ctx, fmt.Sprintf(`
-		INSERT INTO '%s' (consumer_group, offset_acked, offset_consumed)
+		INSERT INTO '%s' (consumer_group, offset_acked, locked_until)
 		VALUES ("%s", 0, 0)
 		ON CONFLICT(consumer_group) DO NOTHING;
 	`, offsetsTableName, s.consumerGroup))
@@ -109,9 +109,13 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	}
 
 	// TODO: customize batch size
+	graceSeconds := 5 // TODO: customize grace period
 	matched = &subscription{
-		db:     db,
-		ticker: time.NewTicker(time.Millisecond * 120),
+		db:                   db,
+		ticker:               time.NewTicker(time.Millisecond * 120),
+		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
+		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group = ? AND offset_acked = ? AND locked_until > unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds),
+		// TODO: remove created_at ?
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT
 				"offset", uuid, created_at, payload, metadata
@@ -121,8 +125,8 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 			)
 			ORDER BY offset LIMIT %d;
 		`, messagesTableName, offsetsTableName, s.consumerGroup, s.batchSize),
-		sqlAcknowledgeMessage: fmt.Sprintf(`
-			UPDATE '%s' SET offset_acked = ? WHERE consumer_group = "%s" AND offset_acked = ?;
+		sqlAcknowledgeMessages: fmt.Sprintf(`
+			UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group = "%s" AND offset_acked = ?;
 		`, offsetsTableName, s.consumerGroup),
 		destination: make(chan *message.Message),
 		logger:      s.logger, // TODO: logger.With

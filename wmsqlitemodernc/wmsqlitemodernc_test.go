@@ -84,7 +84,7 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 			features,
 			func(t *testing.T) (message.Publisher, message.Subscriber) {
 				connector := wmsqlitemodernc.NewConnector(fmt.Sprintf(
-					"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared",
+					"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared&_txlock=exclusive",
 					t.TempDir(),
 					"db.sqlite3",
 				))

@@ -39,3 +39,21 @@ func NewEphemeralConnector() Connector {
 		return db, nil
 	})
 }
+
+type TableNameGenerator interface {
+	GenerateTableName(topic string) string
+}
+
+type TableNameGeneratorFunc func(topic string) string
+
+func (f TableNameGeneratorFunc) GenerateTableName(topic string) string {
+	return f(topic)
+}
+
+var DefaultMessagesTableNameGenerator TableNameGenerator = TableNameGeneratorFunc(func(topic string) string {
+	return "watermill_" + topic
+})
+
+var DefaultOffsetsTableNameGenerator TableNameGenerator = TableNameGeneratorFunc(func(topic string) string {
+	return "watermill_offsets_" + topic
+})

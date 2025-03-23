@@ -8,24 +8,6 @@ import (
 	"regexp"
 )
 
-type TableNameGenerator interface {
-	GenerateTableName(topic string) string
-}
-
-type TableNameGeneratorFunc func(topic string) string
-
-func (f TableNameGeneratorFunc) GenerateTableName(topic string) string {
-	return f(topic)
-}
-
-var DefaultMessagesTableNameGenerator TableNameGenerator = TableNameGeneratorFunc(func(topic string) string {
-	return "watermill_" + topic
-})
-
-var DefaultOffsetsTableNameGenerator TableNameGenerator = TableNameGeneratorFunc(func(topic string) string {
-	return "watermill_offsets_" + topic
-})
-
 var disallowedTopicCharacters = regexp.MustCompile(`[^A-Za-z0-9\-\$\:\.\_]`)
 
 var ErrInvalidTopicName = errors.New("topic name should not contain characters matched by " + disallowedTopicCharacters.String())
@@ -67,7 +49,7 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+offsetsTableName+`' (
 		consumer_group TEXT NOT NULL,
 		offset_acked INTEGER NOT NULL,
-		offset_consumed INTEGER NOT NULL,
+		locked_until INTEGER NOT NULL,
 		PRIMARY KEY(consumer_group)
 	);`)
 	if err != nil {

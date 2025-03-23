@@ -1,12 +1,10 @@
 package wmsqlitemodernc
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -14,85 +12,35 @@ import (
 )
 
 type subscription struct {
-	db                    *sql.DB
-	ticker                *time.Ticker
-	sqlNextMessageBatch   string
-	sqlAcknowledgeMessage string
-	// acknowledgement        chan bool
-	destination chan *message.Message
-	logger      watermill.LoggerAdapter
-}
-
-func (s *subscription) nextMessageBatch(ctx context.Context) (result []*message.Message, err error) {
-	// TODO: customize parent context and query time out duration
-	ctx, cancel := context.WithTimeout(ctx, time.Second*9)
-	defer cancel()
-	rows, err := s.db.QueryContext(ctx, s.sqlNextMessageBatch)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query next message batch: %w", err)
-	}
-	defer func() {
-		err = errors.Join(err, rows.Close())
-	}()
-
-	for rows.Next() {
-		offset := int64(0)
-		uuid := ""
-		payload := []byte{}
-		metadata := []byte{}
-		metadataParsed := make(map[string]string)
-		createdAt := ""
-
-		// "offset", uuid, created_at, payload, metadata
-		err = rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan message row: %w", err)
-		}
-		msg := message.NewMessage(uuid, payload)
-		msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
-		msg.Metadata.Set("createdAt", createdAt)
-		if metadata != nil {
-			err = json.Unmarshal(metadata, &metadataParsed)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
-			}
-			for k, v := range metadataParsed {
-				msg.Metadata.Set(k, v)
-			}
-		}
-		result = append(result, msg)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate message rows: %w", err)
-	}
-
-	return
-}
-
-func (s *subscription) emmitMessage(
-	closed <-chan struct{},
-	msg *message.Message,
-) bool {
-	for {
-		select {
-		case <-closed:
-			return false
-		case s.destination <- msg:
-			select {
-			// TODO: add time out?
-			case <-msg.Acked():
-				return true
-			case <-msg.Nacked():
-			}
-		}
-	}
+	db                     *sql.DB
+	ticker                 *time.Ticker
+	sqlLockConsumerGroup   string
+	sqlExtendLock          string
+	sqlNextMessageBatch    string
+	sqlAcknowledgeMessages string
+	destination            chan *message.Message
+	logger                 watermill.LoggerAdapter
 }
 
 func (s *subscription) Loop(closed <-chan struct{}) {
-	// TODO: defer close
+	// TODO: defer close?
+	lockedOffset := int64(0)
+	offset := int64(0)
+	uuid := ""
+	payload := []byte{}
+	metadata := []byte{}
+	metadataParsed := make(map[string]string)
+	createdAt := ""
+	extendLockTicker := time.NewTicker(time.Second) // TODO: customize
+	var (
+		row  *sql.Row
+		rows *sql.Rows
+		err  error
+	)
 
-top:
+	// 	_, err := db.ExecContext(ctx, `UPDATE '`+offsetsTableName+`' SET locked_until = ? WHERE consumer_group = ?`, time.Now().Add(duration).Unix(), consumerGroup)
+
+loop:
 	for {
 		select {
 		case <-closed:
@@ -100,30 +48,90 @@ top:
 		case <-s.ticker.C:
 		}
 
-		msgs, err := s.nextMessageBatch(context.Background())
-		if err != nil {
-			// if errors.Is(err, sql.ErrConnDone) {
-			// 	panic("connection close")
-			// }
-			s.logger.Error("failed to fetch next message batch", err, nil)
-			continue
+		row = s.db.QueryRow(s.sqlLockConsumerGroup)
+		if err = row.Err(); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				s.logger.Error("failed to lock consumer group row", err, nil)
+			}
+			continue loop
 		}
-		for _, msg := range msgs {
-			offset, err := strconv.ParseInt(msg.Metadata.Get("offset"), 10, 64)
-			if err != nil {
-				s.logger.Error("failed to parse offset", err, nil)
-				continue
+		if err = row.Scan(&lockedOffset); err != nil {
+			s.logger.Error("failed to scan consumer group lock offset", err, nil)
+			continue loop
+		}
+
+		rows, err = s.db.Query(s.sqlNextMessageBatch)
+		if err != nil {
+			s.logger.Error("failed to query next message batch", err, nil)
+			continue loop
+		}
+
+		for rows.Next() {
+			// "offset", uuid, created_at, payload, metadata
+			if err = rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata); err != nil {
+				s.logger.Error(
+					"failed to scan message",
+					errors.Join(err, rows.Close()),
+					nil)
+				continue loop
 			}
-			if s.emmitMessage(closed, msg) {
-				if _, err = s.db.Exec(s.sqlAcknowledgeMessage, offset, offset-1); err != nil {
-					s.logger.Error("failed to acknowledge message", err, nil)
-					// panic(err)
-					// <-s.ticker.C
-					continue top
+			msg := message.NewMessage(uuid, payload)
+			msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
+			msg.Metadata.Set("createdAt", createdAt)
+			if metadata != nil {
+				metadataParsed = make(map[string]string)
+				err = json.Unmarshal(metadata, &metadataParsed)
+				if err != nil {
+					s.logger.Error(
+						"failed to unmarshal message metadata",
+						errors.Join(err, rows.Close()),
+						nil)
+					continue loop
 				}
-				// <-s.ticker.C
-				// panic(offset)
+				for k, v := range metadataParsed {
+					msg.Metadata.Set(k, v)
+				}
 			}
+
+		emmitMessage:
+			for {
+				select {
+				case <-closed:
+					return
+				case s.destination <- msg:
+					for {
+						select {
+						case <-extendLockTicker.C:
+							row = s.db.QueryRow(s.sqlExtendLock, lockedOffset)
+							if err = row.Err(); err != nil {
+								s.logger.Error(
+									"unable to extend lock",
+									errors.Join(err, rows.Close()),
+									nil)
+								continue loop
+							}
+						case <-msg.Acked():
+							break emmitMessage
+						case <-msg.Nacked():
+						}
+					}
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			s.logger.Error(
+				"failed to iterate message rows",
+				errors.Join(err, rows.Close()),
+				nil)
+			continue loop
+		}
+		if err = rows.Close(); err != nil {
+			s.logger.Error("failed to close message rows", err, nil)
+			continue loop
+		}
+		if _, err = s.db.Exec(s.sqlAcknowledgeMessages, offset, lockedOffset); err != nil {
+			s.logger.Error("failed to acknowledge processed messages", err, nil)
+			continue loop
 		}
 	}
 }
