@@ -12,7 +12,7 @@ import (
 
 var features = tests.Features{
 	// ConsumerGroups should be true, if consumer groups are supported.
-	ConsumerGroups: false,
+	ConsumerGroups: true,
 
 	// ExactlyOnceDelivery should be true, if exactly-once delivery is supported.
 	ExactlyOnceDelivery: false,
@@ -74,7 +74,23 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 				}
 				return pub, sub
 			},
-			nil, // TODO: consumer group support
+			func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+				connector := wmsqlitemodernc.NewEphemeralConnector()
+				pub, err := wmsqlitemodernc.NewPublisher(wmsqlitemodernc.PublisherConfiguration{
+					Connector: connector,
+				})
+				if err != nil {
+					t.Fatal("unable to initialize publisher:", err)
+				}
+				sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberConfiguration{
+					ConsumerGroup: consumerGroup,
+					Connector:     connector,
+				})
+				if err != nil {
+					t.Fatal("unable to initialize publisher:", err)
+				}
+				return pub, sub
+			},
 		)
 	})
 
@@ -103,7 +119,28 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 				}
 				return pub, sub
 			},
-			nil, // TODO: consumer group support
+			func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+				connector := wmsqlitemodernc.NewConnector(fmt.Sprintf(
+					"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared&_txlock=exclusive",
+					t.TempDir(),
+					"db.sqlite3",
+				))
+
+				pub, err := wmsqlitemodernc.NewPublisher(wmsqlitemodernc.PublisherConfiguration{
+					Connector: connector,
+				})
+				if err != nil {
+					t.Fatal("unable to initialize publisher:", err)
+				}
+				sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberConfiguration{
+					ConsumerGroup: consumerGroup,
+					Connector:     connector,
+				})
+				if err != nil {
+					t.Fatal("unable to initialize publisher:", err)
+				}
+				return pub, sub
+			},
 		)
 	})
 }
