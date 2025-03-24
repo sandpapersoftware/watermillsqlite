@@ -48,6 +48,7 @@ func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	// TODO: validate batch size
+	// TODO: validate poll interval, and it must be less than lock timeout
 	return &subscriber{
 		consumerGroup: cfg.ConsumerGroup,
 		batchSize:     cmp.Or(cfg.BatchSize, 10),
@@ -112,9 +113,9 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	graceSeconds := 5 // TODO: customize grace period
 	matched = &subscription{
 		db:                   db,
-		ticker:               time.NewTicker(time.Millisecond * 120),
+		pollTicker:           time.NewTicker(time.Millisecond * 120),
 		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
-		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group = ? AND offset_acked = ? AND locked_until > unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds),
+		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		// TODO: remove created_at ?
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT

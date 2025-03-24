@@ -13,7 +13,7 @@ import (
 
 type subscription struct {
 	db                     *sql.DB
-	ticker                 *time.Ticker
+	pollTicker             *time.Ticker
 	sqlLockConsumerGroup   string
 	sqlExtendLock          string
 	sqlNextMessageBatch    string
@@ -29,9 +29,7 @@ func (s *subscription) Loop(closed <-chan struct{}) {
 	uuid := ""
 	payload := []byte{}
 	metadata := []byte{}
-	metadataParsed := make(map[string]string)
 	createdAt := ""
-	extendLockTicker := time.NewTicker(time.Second) // TODO: customize
 	var (
 		row  *sql.Row
 		rows *sql.Rows
@@ -45,18 +43,18 @@ loop:
 		select {
 		case <-closed:
 			return
-		case <-s.ticker.C:
+		case <-s.pollTicker.C:
 		}
 
 		row = s.db.QueryRow(s.sqlLockConsumerGroup)
 		if err = row.Err(); err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				s.logger.Error("failed to lock consumer group row", err, nil)
-			}
+			s.logger.Error("failed to lock consumer group row", err, nil)
 			continue loop
 		}
 		if err = row.Scan(&lockedOffset); err != nil {
-			s.logger.Error("failed to scan consumer group lock offset", err, nil)
+			if !errors.Is(err, sql.ErrNoRows) {
+				s.logger.Error("failed to scan consumer group lock offset", err, nil)
+			}
 			continue loop
 		}
 
@@ -67,7 +65,6 @@ loop:
 		}
 
 		for rows.Next() {
-			// "offset", uuid, created_at, payload, metadata
 			if err = rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata); err != nil {
 				s.logger.Error(
 					"failed to scan message",
@@ -75,46 +72,45 @@ loop:
 					nil)
 				continue loop
 			}
-			msg := message.NewMessage(uuid, payload)
-			msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
-			msg.Metadata.Set("createdAt", createdAt)
-			if metadata != nil {
-				metadataParsed = make(map[string]string)
-				err = json.Unmarshal(metadata, &metadataParsed)
-				if err != nil {
-					s.logger.Error(
-						"failed to unmarshal message metadata",
-						errors.Join(err, rows.Close()),
-						nil)
-					continue loop
-				}
-				for k, v := range metadataParsed {
-					msg.Metadata.Set(k, v)
-				}
-			}
 
 		emmitMessage:
 			for {
-				select {
+				msg := message.NewMessage(uuid, payload)
+				msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
+				msg.Metadata.Set("createdAt", createdAt)
+				if metadata != nil {
+					err = json.Unmarshal(metadata, &msg.Metadata)
+					if err != nil {
+						s.logger.Error(
+							"failed to unmarshal message metadata",
+							errors.Join(err, rows.Close()),
+							nil)
+						continue loop
+					}
+				}
+
+				select { // wait for message emission
 				case <-closed:
 					return
 				case s.destination <- msg:
-					for {
-						select {
-						case <-extendLockTicker.C:
-							row = s.db.QueryRow(s.sqlExtendLock, lockedOffset)
-							if err = row.Err(); err != nil {
-								s.logger.Error(
-									"unable to extend lock",
-									errors.Join(err, rows.Close()),
-									nil)
-								continue loop
-							}
-						case <-msg.Acked():
-							break emmitMessage
-						case <-msg.Nacked():
-						}
+				}
+
+				select { // wait for message acknowledgement
+				case <-closed:
+					return
+				case <-s.pollTicker.C:
+					row = s.db.QueryRow(s.sqlExtendLock, lockedOffset)
+					if err = row.Err(); err != nil {
+						s.logger.Error(
+							"unable to extend lock",
+							errors.Join(err, rows.Close()),
+							nil)
+						continue loop
 					}
+				case <-msg.Acked():
+					break emmitMessage
+				case <-msg.Nacked():
+					continue emmitMessage
 				}
 			}
 		}
