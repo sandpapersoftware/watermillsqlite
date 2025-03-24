@@ -156,14 +156,10 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		// TODO: remove created_at ?
 		sqlNextMessageBatch: fmt.Sprintf(`
-			SELECT
-				"offset", uuid, payload, metadata
+			SELECT "offset", uuid, payload, metadata
 			FROM '%s'
-			WHERE "offset" > (
-				SELECT offset_acked FROM '%s' WHERE consumer_group = "%s"
-			)
-			ORDER BY offset LIMIT %d;
-		`, messagesTableName, offsetsTableName, s.consumerGroup, s.batchSize),
+			WHERE "offset">? ORDER BY offset LIMIT %d;
+		`, messagesTableName, s.batchSize),
 		sqlAcknowledgeMessages: fmt.Sprintf(`
 			UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group = "%s" AND offset_acked = ?;
 		`, offsetsTableName, s.consumerGroup),

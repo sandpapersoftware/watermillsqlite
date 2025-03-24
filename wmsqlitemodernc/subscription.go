@@ -30,30 +30,56 @@ type rawMessage struct {
 	Metadata message.Metadata
 }
 
-func (s *subscription) nextBatch() (result []rawMessage, err error) {
-	rows, err := s.db.Query(s.sqlNextMessageBatch)
+func (s *subscription) nextBatch() (
+	lockedOffset int64,
+	batch []rawMessage,
+	err error,
+) {
+	// tx, err := s.db.BeginTx(context.TODO(), nil)
+	// if err != nil {
+	// 	return 0, nil, err
+	// }
+	// defer func() {
+	// 	if err != nil {
+	// 		err = errors.Join(err, tx.Rollback())
+	// 	}
+	// }()
+
+	lock := s.db.QueryRow(s.sqlLockConsumerGroup)
+	if err = lock.Err(); err != nil {
+		return 0, nil, fmt.Errorf("unable to acquire row lock: %w", err)
+	}
+	if err = lock.Scan(&lockedOffset); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// row already locked by another consumer
+			return 0, nil, nil
+		}
+		return 0, nil, fmt.Errorf("unable to scan offset_acked value: %w", err)
+	}
+
+	rows, err := s.db.Query(s.sqlNextMessageBatch, lockedOffset)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	rawMetadata := []byte{}
 	for rows.Next() {
 		next := rawMessage{}
 		if err = rows.Scan(&next.Offset, &next.UUID, &next.Payload, &rawMetadata); err != nil {
-			return nil, errors.Join(err, rows.Close())
+			return 0, nil, errors.Join(err, rows.Close())
 		}
 		if err = json.Unmarshal(rawMetadata, &next.Metadata); err != nil {
-			return nil, errors.Join(
+			return 0, nil, errors.Join(
 				fmt.Errorf("unable to parse metadata JSON: %w", err),
 				rows.Close(),
 			)
 		}
-		result = append(result, next)
+		batch = append(batch, next)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.Join(err, rows.Close())
+		return 0, nil, errors.Join(err, rows.Close())
 	}
-	return result, rows.Close()
+	return lockedOffset, batch, rows.Close()
 }
 
 func (s *subscription) Loop(closed <-chan struct{}) {
@@ -61,7 +87,8 @@ func (s *subscription) Loop(closed <-chan struct{}) {
 	var (
 		lockedOffset    int64
 		lastAckedOffset int64
-		row             *sql.Row
+		row             *sql.Row // TODO: remove
+		batch           []rawMessage
 		err             error
 	)
 
@@ -73,24 +100,12 @@ loop:
 		case <-s.pollTicker.C:
 		}
 
-		row = s.db.QueryRow(s.sqlLockConsumerGroup)
-		if err = row.Err(); err != nil {
-			s.logger.Error("failed to lock consumer group row", err, nil)
-			continue loop
-		}
-		if err = row.Scan(&lockedOffset); err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				s.logger.Error("failed to scan consumer group lock offset", err, nil)
-			}
-			continue loop
-		}
-		lastAckedOffset = lockedOffset
-
-		batch, err := s.nextBatch()
+		lockedOffset, batch, err = s.nextBatch()
 		if err != nil {
 			s.logger.Error("next message batch query failed", err, nil)
 			continue loop
 		}
+		lastAckedOffset = lockedOffset
 
 		for _, next := range batch {
 
@@ -127,9 +142,11 @@ loop:
 				}
 			}
 		}
-		if _, err = s.db.Exec(s.sqlAcknowledgeMessages, lastAckedOffset, lockedOffset); err != nil {
-			s.logger.Error("failed to acknowledge processed messages", err, nil)
-			continue loop
+
+		if lastAckedOffset > lockedOffset {
+			if _, err = s.db.Exec(s.sqlAcknowledgeMessages, lastAckedOffset, lockedOffset); err != nil {
+				s.logger.Error("failed to acknowledge processed messages", err, nil)
+			}
 		}
 	}
 }
