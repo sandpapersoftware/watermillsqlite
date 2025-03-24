@@ -4,8 +4,8 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,37 +76,26 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 	p.mu.Unlock()
 
-	tx, err := p.db.BeginTx(messages[0].Context(), nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, tx.Rollback())
-		}
-	}()
+	query := strings.Builder{}
+	_, _ = query.WriteString("INSERT INTO '")
+	_, _ = query.WriteString(messagesTableName)
+	_, _ = query.WriteString("' (uuid, created_at, payload, metadata) VALUES ")
 
-	// TODO: use multi-row insert instead of a transaction
+	values := make([]any, 0, len(messages)*4)
 	for _, msg := range messages {
 		metadata, err := json.Marshal(msg.Metadata)
 		if err != nil {
 			return fmt.Errorf("unable to encode message %q metadata to JSON: %w", msg.UUID, err)
 		}
-
-		if _, err = tx.ExecContext(
-			msg.Context(),
-			"INSERT INTO '"+messagesTableName+"' (uuid, created_at, payload, metadata) VALUES (?, ?, ?, ?);",
-			msg.UUID,
-			time.Now().Format(time.RFC3339),
-			msg.Payload,
-			metadata,
-		); err != nil {
-			// panic(err)
-			return err
-		}
+		values = append(values, msg.UUID, time.Now().Format(time.RFC3339), msg.Payload, metadata)
+		query.WriteString(`(?,?,?,?),`)
 	}
 
-	return tx.Commit()
+	_, err = p.db.Exec(
+		strings.TrimRight(query.String(), ","),
+		values...,
+	)
+	return err
 }
 
 func (p *publisher) Close() error {
