@@ -19,14 +19,6 @@ func NewBasic(setup PubSubFixture) func(t *testing.T) {
 			}).Unsubscribe(topic); err != nil {
 				t.Fatal(err)
 			}
-			if err := sub.Close(); err != nil {
-				t.Fatal(err)
-			}
-		})
-		t.Cleanup(func() {
-			if err := pub.Close(); err != nil {
-				t.Fatal(err)
-			}
 		})
 		t.Run("publish 20 messages", func(t *testing.T) {
 			t.Parallel()

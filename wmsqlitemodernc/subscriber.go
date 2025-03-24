@@ -28,13 +28,26 @@ type SubscriberConfiguration struct {
 	GenerateOffsetsTableName  TableNameGenerator
 	Connector                 Connector
 	PollInterval              time.Duration
-	Logger                    watermill.LoggerAdapter
+
+	// AckDeadline is the time to wait for acking a message.
+	// If message is not acked within this time, it will be nacked and re-delivered.
+	//
+	// When messages are read in bulk, this time is calculated for each message separately.
+	//
+	// If you want to disable ack deadline, set it to 0.
+	// Warning: when ack deadline is disabled, messages may block the subscriber from reading new messages.
+	//
+	// Must be non-negative. Nil value defaults to 30s.
+	AckDeadline *time.Duration
+
+	Logger watermill.LoggerAdapter
 }
 
 type subscriber struct {
 	consumerGroup             string
 	batchSize                 int
 	connector                 Connector
+	ackChannel                func() <-chan time.Time
 	closed                    chan struct{}
 	generateMessagesTableName TableNameGenerator
 	generateOffsetsTableName  TableNameGenerator
@@ -44,15 +57,39 @@ type subscriber struct {
 	subscriptionsByTopic map[string]*subscription
 }
 
+func infiniteAckChannel() <-chan time.Time {
+	return nil
+}
+
+func defaultAckChannel() <-chan time.Time {
+	return time.After(time.Second * 30)
+}
+
 func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	// TODO: validate batch size
 	// TODO: validate poll interval, and it must be less than lock timeout
+
+	ackChannel := defaultAckChannel
+	if cfg.AckDeadline != nil {
+		deadline := *cfg.AckDeadline
+		if deadline < 0 {
+			return nil, errors.New("AckDeadline must be above 0")
+		}
+		if deadline == 0 {
+			ackChannel = infiniteAckChannel
+		} else {
+			ackChannel = func() <-chan time.Time {
+				return time.After(deadline)
+			}
+		}
+	}
 	return &subscriber{
 		consumerGroup: cfg.ConsumerGroup,
 		batchSize:     cmp.Or(cfg.BatchSize, 10),
 		connector:     cfg.Connector,
+		ackChannel:    ackChannel,
 		closed:        make(chan struct{}),
 		generateMessagesTableName: cmp.Or(
 			cfg.GenerateMessagesTableName,
@@ -114,6 +151,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	matched = &subscription{
 		db:                   db,
 		pollTicker:           time.NewTicker(time.Millisecond * 120),
+		ackChannel:           s.ackChannel,
 		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		// TODO: remove created_at ?

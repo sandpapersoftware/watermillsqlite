@@ -25,18 +25,32 @@ func NewPubSubFixture(t *testing.T) tests.PubSubFixture {
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
 		}
+		t.Cleanup(func() {
+			if err := pub.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+
 		sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberConfiguration{
 			Connector: connector,
 		})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
 		}
+		t.Cleanup(func() {
+			if err := sub.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+
 		return pub, sub
 	}
 }
 
 func TestPubSub(t *testing.T) {
-	t.Run("basic functionality", tests.NewBasic(NewPubSubFixture(t)))
+	setup := NewPubSubFixture(t)
+	t.Run("basic functionality", tests.NewBasic(setup))
+	t.Run("perpetual locks", tests.NewHung(setup))
 }
 
 func TestOfficialImplementationAcceptance(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 type subscription struct {
 	db                     *sql.DB
 	pollTicker             *time.Ticker
+	ackChannel             func() <-chan time.Time
 	sqlLockConsumerGroup   string
 	sqlExtendLock          string
 	sqlNextMessageBatch    string
@@ -109,6 +110,9 @@ loop:
 					}
 				case <-msg.Acked():
 					break emmitMessage
+				case <-s.ackChannel():
+					s.logger.Debug("message took too long to be acknowledged", nil)
+					continue emmitMessage // message took too long - retry
 				case <-msg.Nacked():
 					continue emmitMessage
 				}
