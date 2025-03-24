@@ -23,21 +23,47 @@ type subscription struct {
 	logger                 watermill.LoggerAdapter
 }
 
+type rawMessage struct {
+	Offset   int64
+	UUID     string
+	Payload  []byte
+	Metadata message.Metadata
+}
+
+func (s *subscription) nextBatch() (result []rawMessage, err error) {
+	rows, err := s.db.Query(s.sqlNextMessageBatch)
+	if err != nil {
+		return nil, err
+	}
+
+	rawMetadata := []byte{}
+	for rows.Next() {
+		next := rawMessage{}
+		if err = rows.Scan(&next.Offset, &next.UUID, &next.Payload, &rawMetadata); err != nil {
+			return nil, errors.Join(err, rows.Close())
+		}
+		if err = json.Unmarshal(rawMetadata, &next.Metadata); err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("unable to parse metadata JSON: %w", err),
+				rows.Close(),
+			)
+		}
+		result = append(result, next)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Join(err, rows.Close())
+	}
+	return result, rows.Close()
+}
+
 func (s *subscription) Loop(closed <-chan struct{}) {
 	// TODO: defer close?
-	lockedOffset := int64(0)
-	offset := int64(0)
-	uuid := ""
-	payload := []byte{}
-	metadata := []byte{}
-	createdAt := ""
 	var (
-		row  *sql.Row
-		rows *sql.Rows
-		err  error
+		lockedOffset    int64
+		lastAckedOffset int64
+		row             *sql.Row
+		err             error
 	)
-
-	// 	_, err := db.ExecContext(ctx, `UPDATE '`+offsetsTableName+`' SET locked_until = ? WHERE consumer_group = ?`, time.Now().Add(duration).Unix(), consumerGroup)
 
 loop:
 	for {
@@ -58,37 +84,20 @@ loop:
 			}
 			continue loop
 		}
+		lastAckedOffset = lockedOffset
 
-		rows, err = s.db.Query(s.sqlNextMessageBatch)
+		batch, err := s.nextBatch()
 		if err != nil {
-			s.logger.Error("failed to query next message batch", err, nil)
+			s.logger.Error("next message batch query failed", err, nil)
 			continue loop
 		}
 
-		for rows.Next() {
-			if err = rows.Scan(&offset, &uuid, &createdAt, &payload, &metadata); err != nil {
-				s.logger.Error(
-					"failed to scan message",
-					errors.Join(err, rows.Close()),
-					nil)
-				continue loop
-			}
+		for _, next := range batch {
 
 		emmitMessage:
 			for {
-				msg := message.NewMessage(uuid, payload)
-				msg.Metadata.Set("offset", fmt.Sprintf("%d", offset))
-				msg.Metadata.Set("createdAt", createdAt)
-				if metadata != nil {
-					err = json.Unmarshal(metadata, &msg.Metadata)
-					if err != nil {
-						s.logger.Error(
-							"failed to unmarshal message metadata",
-							errors.Join(err, rows.Close()),
-							nil)
-						continue loop
-					}
-				}
+				msg := message.NewMessage(next.UUID, next.Payload)
+				msg.Metadata = next.Metadata
 
 				select { // wait for message emission
 				case <-closed:
@@ -100,17 +109,17 @@ loop:
 				case <-closed:
 					return
 				case <-s.pollTicker.C:
-					row = s.db.QueryRow(s.sqlExtendLock, lockedOffset)
+					lockedOffset = lastAckedOffset
+					row = s.db.QueryRow(s.sqlExtendLock, next.Offset, lastAckedOffset)
 					if err = row.Err(); err != nil {
-						s.logger.Error(
-							"unable to extend lock",
-							errors.Join(err, rows.Close()),
-							nil)
+						s.logger.Error("unable to extend lock", err, nil)
 						continue loop
 					}
 				case <-msg.Acked():
+					lastAckedOffset = next.Offset
 					break emmitMessage
 				case <-s.ackChannel():
+					// TODO: extend deadline? s.db.QueryRow(s.sqlExtendLock, next.Offset, lockedOffset)
 					s.logger.Debug("message took too long to be acknowledged", nil)
 					continue emmitMessage // message took too long - retry
 				case <-msg.Nacked():
@@ -118,18 +127,7 @@ loop:
 				}
 			}
 		}
-		if err := rows.Err(); err != nil {
-			s.logger.Error(
-				"failed to iterate message rows",
-				errors.Join(err, rows.Close()),
-				nil)
-			continue loop
-		}
-		if err = rows.Close(); err != nil {
-			s.logger.Error("failed to close message rows", err, nil)
-			continue loop
-		}
-		if _, err = s.db.Exec(s.sqlAcknowledgeMessages, offset, lockedOffset); err != nil {
+		if _, err = s.db.Exec(s.sqlAcknowledgeMessages, lastAckedOffset, lockedOffset); err != nil {
 			s.logger.Error("failed to acknowledge processed messages", err, nil)
 			continue loop
 		}
