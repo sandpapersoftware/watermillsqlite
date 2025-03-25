@@ -35,6 +35,11 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 		}
 	}()
 
+	// Adding UNIQUE(uuid) constraint slows the driver
+	// down without benefit? Also, it will fail
+	// the official `TestMessageCtx` acceptance test,
+	// which attempts to send the exact same message twice.
+	// But removing it will fail the bulk insertion test.
 	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+messagesTableName+`' (
 		'offset' INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		uuid TEXT NOT NULL,

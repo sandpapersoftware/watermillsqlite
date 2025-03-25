@@ -90,6 +90,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		}
 		values = append(values, msg.UUID, time.Now().Format(time.RFC3339), msg.Payload, metadata)
 		query.WriteString(`(?,?,?,?),`)
+		// fmt.Println("queued up message for publication:", msg.UUID)
 	}
 
 	_, err = p.db.Exec(

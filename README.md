@@ -28,8 +28,8 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [x] tests.TestTopic
     - [x] tests.TestSubscribeCtx
     - [x] tests.TestNewSubscriberReceivesOldMessages
-    - [ ] tests.TestMessageCtx
-    - [ ] consumer group tests
+    - [ ] tests.TestConsumerGroups
+    - [?] tests.TestMessageCtx - passes when `UNIQUE` contraint is removed from message table, because the test sends the exact same message twice. This may be a test defect. Removing `UNIQUE` contraint fails the `TestNewSubscriberReceivesOldMessages`, because the test data set includes a few duplicates.
 
 ## Similar Projects
 
