@@ -9,17 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-func NewBasic(setup PubSubFixture) func(t *testing.T) {
+func TestBasicSendRecieve(setup PubSubFixture) func(t *testing.T) {
 	topic := "test-basic-publish-subscribe"
 	return func(t *testing.T) {
 		pub, sub := setup(t, "")
-		t.Cleanup(func() {
-			if err := sub.(interface {
-				Unsubscribe(string) error
-			}).Unsubscribe(topic); err != nil {
-				t.Fatal(err)
-			}
-		})
 		t.Run("publish 20 messages", func(t *testing.T) {
 			t.Parallel()
 
@@ -77,6 +70,61 @@ func NewBasic(setup PubSubFixture) func(t *testing.T) {
 			}
 			if processed != 19 {
 				t.Fatalf("expected 19 messages, got %d", processed)
+			}
+		})
+	}
+}
+
+func TestOnePublisherThreeSubscribers(setup PubSubFixture, messageCount int) func(t *testing.T) {
+	topic := "one-publisher-three-subscribers"
+	return func(t *testing.T) {
+		t.Parallel()
+
+		pub, sub := setup(t, "")
+		t.Run("publish messages", func(t *testing.T) {
+			t.Parallel()
+			for range messageCount {
+				msg := message.NewMessage(uuid.New().String(), []byte("test"))
+				if err := pub.Publish(topic, msg); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+
+		t.Run("collect messages", func(t *testing.T) {
+			t.Parallel()
+			first, err := sub.Subscribe(t.Context(), topic)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := sub.Subscribe(t.Context(), topic)
+			if err != nil {
+				t.Fatal(err)
+			}
+			third, err := sub.Subscribe(t.Context(), topic)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			collected := 0
+			done := time.After(time.Second * 2)
+			for {
+				select {
+				case <-done:
+					if collected != messageCount {
+						t.Fatalf("expected %d messages, got %d", messageCount, collected)
+					}
+					return
+				case msg := <-first:
+					msg.Ack()
+					collected++
+				case msg := <-second:
+					msg.Ack()
+					collected++
+				case msg := <-third:
+					msg.Ack()
+					collected++
+				}
 			}
 		})
 	}

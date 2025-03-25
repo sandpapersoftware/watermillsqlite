@@ -10,16 +10,12 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
 )
 
 var (
 	ErrClosed = errors.New("subscriber is closed")
 )
-
-type Subscriber interface {
-	message.Subscriber
-	Unsubscribe(topic string) error
-}
 
 type SubscriberConfiguration struct {
 	ConsumerGroup             string
@@ -44,6 +40,7 @@ type SubscriberConfiguration struct {
 }
 
 type subscriber struct {
+	UUID                      string
 	consumerGroup             string
 	batchSize                 int
 	connector                 Connector
@@ -53,8 +50,7 @@ type subscriber struct {
 	generateOffsetsTableName  TableNameGenerator
 	logger                    watermill.LoggerAdapter
 
-	mu                   sync.Mutex
-	subscriptionsByTopic map[string]*subscription
+	subscribeWg *sync.WaitGroup
 }
 
 func infiniteAckChannel() <-chan time.Time {
@@ -65,7 +61,7 @@ func defaultAckChannel() <-chan time.Time {
 	return time.After(time.Second * 30)
 }
 
-func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
+func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	// TODO: validate batch size
@@ -86,6 +82,7 @@ func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 		}
 	}
 	return &subscriber{
+		UUID:          uuid.New().String(),
 		consumerGroup: cfg.ConsumerGroup,
 		batchSize:     cmp.Or(cfg.BatchSize, 10),
 		connector:     cfg.Connector,
@@ -103,8 +100,7 @@ func NewSubscriber(cfg SubscriberConfiguration) (Subscriber, error) {
 			cfg.Logger,
 			watermill.NewSlogLogger(nil),
 		),
-		mu:                   sync.Mutex{},
-		subscriptionsByTopic: make(map[string]*subscription),
+		subscribeWg: &sync.WaitGroup{},
 	}, nil
 }
 
@@ -113,13 +109,6 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	case <-s.closed:
 		return nil, ErrClosed
 	default:
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	matched, ok := s.subscriptionsByTopic[topic]
-	if ok {
-		return matched.destination, nil
 	}
 
 	db, err := s.connector.Connect()
@@ -148,13 +137,12 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 
 	// TODO: customize batch size
 	graceSeconds := 5 // TODO: customize grace period
-	matched = &subscription{
+	sub := &subscription{
 		db:                   db,
-		pollTicker:           time.NewTicker(time.Millisecond * 120),
+		pollTicker:           time.NewTicker(time.Millisecond * 20),
 		ackChannel:           s.ackChannel,
 		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
-		// TODO: remove created_at ?
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT "offset", uuid, payload, metadata
 			FROM '%s'
@@ -164,41 +152,37 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 			UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group = "%s" AND offset_acked = ?;
 		`, offsetsTableName, s.consumerGroup),
 		destination: make(chan *message.Message),
-		logger:      s.logger, // TODO: logger.With
+		logger: s.logger.With(
+			watermill.LogFields{
+				"subscriber_id":  s.UUID,
+				"consumer_group": s.consumerGroup,
+				"topic":          topic,
+			},
+		),
 	}
-	s.subscriptionsByTopic[topic] = matched
-	go matched.Loop(s.closed)
-	return matched.destination, nil
+
+	// ctx, cancel := context.WithCancel(ctx)
+	s.subscribeWg.Add(1)
+	go func() {
+		defer s.subscribeWg.Done()
+		sub.Loop(s.closed)
+		close(sub.destination)
+		// cancel()
+	}()
+
+	return sub.destination, nil
 }
 
-func (s *subscriber) Unsubscribe(topic string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	subscription, ok := s.subscriptionsByTopic[topic]
-	if !ok {
-		return nil
+func (s *subscriber) Close() error {
+	select {
+	case <-s.closed:
+	default:
+		close(s.closed)
+		s.subscribeWg.Wait()
 	}
-	if err := subscription.Close(); err != nil {
-		return err
-	}
-	delete(s.subscriptionsByTopic, topic)
 	return nil
 }
 
-func (s *subscriber) Close() (err error) {
-	if s.closed == nil {
-		return nil
-	}
-	close(s.closed)
-	s.closed = nil
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, sub := range s.subscriptionsByTopic {
-		err = errors.Join(err, sub.Close())
-	}
-	return err
-}
-
 func (s *subscriber) String() string {
-	return "sqlite3-modernc-subscriber"
+	return "sqlite3-modernc-subscriber-" + s.UUID
 }

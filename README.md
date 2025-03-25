@@ -11,3 +11,19 @@ Current architectural decision is to lock a consumer group offset using `unixepo
 - Package is early alpha.
 - [ ] Ephemeral in-memory `Connector` must also satisfy tests.
 - [ ] add `NewDeduplicator` constructor for deduplication middleware.
+- Pass official implementation acceptance tests:
+    - [x] tests.TestPublishSubscribe
+    - [x] tests.TestConcurrentSubscribe
+    - [x] tests.TestConcurrentSubscribeMultipleTopics
+    - [x] tests.TestResendOnError
+    - [x] tests.TestContinueAfterSubscribeClose
+    - [x] tests.TestConcurrentClose
+    - [x] tests.TestContinueAfterErrors
+    - [x] tests.TestPublishSubscribeInOrder
+    - [x] tests.TestPublisherClose
+    - [x] tests.TestTopic
+    - [x] tests.TestNewSubscriberReceivesOldMessages
+    - [ ] tests.TestNoAck
+    - [ ] tests.TestMessageCtx
+    - [ ] tests.TestSubscribeCtx // hangs
+    - [ ] consumer group tests
