@@ -33,7 +33,8 @@ func NewPubSubFixture(t *testing.T) tests.PubSubFixture {
 		})
 
 		sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberConfiguration{
-			Connector: connector,
+			ConsumerGroup: consumerGroup,
+			Connector:     connector,
 		})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)

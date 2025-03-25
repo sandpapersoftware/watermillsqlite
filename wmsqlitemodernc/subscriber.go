@@ -18,7 +18,8 @@ var (
 )
 
 type SubscriberConfiguration struct {
-	ConsumerGroup             string
+	ConsumerGroup string
+	// InitializeSchema bool
 	BatchSize                 int
 	GenerateMessagesTableName TableNameGenerator
 	GenerateOffsetsTableName  TableNameGenerator

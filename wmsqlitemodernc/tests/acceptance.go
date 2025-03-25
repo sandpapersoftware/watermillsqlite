@@ -10,7 +10,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 	return func(t *testing.T) {
 		features := tests.Features{
 			// ConsumerGroups should be true, if consumer groups are supported.
-			ConsumerGroups: false,
+			ConsumerGroups: true,
 
 			// ExactlyOnceDelivery should be true, if exactly-once delivery is supported.
 			ExactlyOnceDelivery: true, // to omit TestMessageCtx
@@ -37,17 +37,14 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 			// GenerateTopicFunc func(tctx TestContext) string
 		}
 
-		// tCtx := tests.TestContext{
-		// 	TestID:   tests.NewTestID(),
-		// 	Features: features,
-		// }
-		// TODO: pass the next two tests, also consumer group tests (not copied from TestPubSub)
-		// tests.TestConsumerGroups( t, tCtx, tests.ConsumerGroupPubSubConstructor(fixture))
-
 		if testing.Short() {
 			t.Skip("skipping acceptance tests in short mode")
 		}
 
+		// tCtx := tests.TestContext{
+		// 	TestID:   tests.NewTestID(),
+		// 	Features: features,
+		// }
 		// tests.TestPublishSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConcurrentSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConcurrentSubscribeMultipleTopics(t, tCtx, fixture.WithConsumerGroup("test"))
@@ -62,6 +59,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		// // tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
+		// tests.TestConsumerGroups(t, tCtx, tests.ConsumerGroupPubSubConstructor(fixture)) // requires features.ConsumerGroups=true
 
 		tests.TestPubSub(t,
 			features,

@@ -28,10 +28,10 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [x] tests.TestTopic
     - [x] tests.TestSubscribeCtx
     - [x] tests.TestNewSubscriberReceivesOldMessages
-    - [ ] tests.TestConsumerGroups
-    - [?] tests.TestMessageCtx - passes when `UNIQUE` contraint is removed from message table, because the test sends the exact same message twice. This may be a test defect. Removing `UNIQUE` contraint fails the `TestNewSubscriberReceivesOldMessages`, because the test data set includes a few duplicates.
+    - [x] tests.TestConsumerGroups
+    - [-] tests.TestMessageCtx - passes when `UNIQUE` contraint is removed from message table, because the test sends the exact same message twice. This may be a test defect. Removing `UNIQUE` contraint fails the `TestNewSubscriberReceivesOldMessages`, because the test data set includes a few duplicates.
 
 ## Similar Projects
 
-- <https://github.com/walterwanderley/watermill-sqlite> - requires CGO for `mattn/go-sqlite3` dependency
-<!-- - <https://github.com/ov2b/watermill-sqlite3> - author requested removal of the mention, because it is a very rough draft -->
+- <https://github.com/walterwanderley/watermill-sqlite>
+<!-- - <https://github.com/ov2b/watermill-sqlite3> - author requested removal of the mention, because it is a very rough draft - requires CGO for `mattn/go-sqlite3` dependency -->
