@@ -45,8 +45,7 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 		uuid TEXT NOT NULL,
 		created_at TEXT NOT NULL,
 		payload BLOB NOT NULL,
-		metadata JSON NOT NULL,
-		UNIQUE(uuid)
+		metadata JSON NOT NULL
 	);`)
 	if err != nil {
 		return err

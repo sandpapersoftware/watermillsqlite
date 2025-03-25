@@ -8,18 +8,22 @@ import (
 
 func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) {
 	return func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("skipping acceptance tests in short mode")
+		}
+
 		features := tests.Features{
 			// ConsumerGroups should be true, if consumer groups are supported.
 			ConsumerGroups: true,
 
 			// ExactlyOnceDelivery should be true, if exactly-once delivery is supported.
-			ExactlyOnceDelivery: true, // to omit TestMessageCtx
+			ExactlyOnceDelivery: true,
 
 			// GuaranteedOrder should be true, if order of messages is guaranteed.
 			GuaranteedOrder: true,
 
 			// Some Pub/Subs guarantee the order only when one subscriber is subscribed at a time.
-			GuaranteedOrderWithSingleSubscriber: false,
+			GuaranteedOrderWithSingleSubscriber: true,
 
 			// Persistent should be true, if messages are persistent between multiple instances of a Pub/Sub
 			// (in practice, only GoChannel doesn't support that).
@@ -35,10 +39,6 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 
 			// GenerateTopicFunc overrides standard topic name generation.
 			// GenerateTopicFunc func(tctx TestContext) string
-		}
-
-		if testing.Short() {
-			t.Skip("skipping acceptance tests in short mode")
 		}
 
 		// tCtx := tests.TestContext{
@@ -58,8 +58,11 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		// tests.TestTopic(t, tCtx, fixture.WithConsumerGroup("test"))
 		// // tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test"))
-		// tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConsumerGroups(t, tCtx, tests.ConsumerGroupPubSubConstructor(fixture)) // requires features.ConsumerGroups=true
+
+		// OMIT THOSE ACCEPTANCE TESTS
+		//
+		// tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
 
 		tests.TestPubSub(t,
 			features,
