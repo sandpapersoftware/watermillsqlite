@@ -162,14 +162,19 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		),
 	}
 
-	// ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	go func(done <-chan struct{}) {
+		<-done
+		cancel()
+	}(s.closed)
+
 	s.subscribeWg.Add(1)
-	go func() {
+	go func(ctx context.Context) {
 		defer s.subscribeWg.Done()
-		sub.Loop(s.closed)
+		sub.Loop(ctx)
 		close(sub.destination)
-		// cancel()
-	}()
+		cancel()
+	}(ctx)
 
 	return sub.destination, nil
 }

@@ -43,7 +43,6 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		}
 		// TODO: pass the next two tests, also consumer group tests (not copied from TestPubSub)
 		// tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
-		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test")) // hangs
 
 		if testing.Short() {
 			t.Skip("skipping acceptance tests in short mode")
@@ -60,6 +59,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		tests.TestPublishSubscribeInOrder(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestPublisherClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestTopic(t, tCtx, fixture.WithConsumerGroup("test"))
+		tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
 
 		// tests.TestPubSub(t,

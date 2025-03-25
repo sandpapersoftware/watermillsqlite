@@ -26,7 +26,12 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [x] tests.TestPublishSubscribeInOrder
     - [x] tests.TestPublisherClose
     - [x] tests.TestTopic
+    - [x] tests.TestSubscribeCtx
     - [x] tests.TestNewSubscriberReceivesOldMessages
     - [ ] tests.TestMessageCtx
-    - [ ] tests.TestSubscribeCtx // hangs
     - [ ] consumer group tests
+
+## Similar Projects
+
+- <https://github.com/walterwanderley/watermill-sqlite>
+- <https://github.com/ov2b/watermill-sqlite3>

@@ -97,8 +97,8 @@ func (s *subscription) ExtendLock() error {
 	return nil
 }
 
-func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
-	ctx, cancel := context.WithCancel(context.TODO())
+func (s *subscription) Send(parent context.Context, next rawMessage) error {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	for {
@@ -107,7 +107,7 @@ func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
 		msg.SetContext(ctx) // required for passing official PubSub test tests.TestMessageCtx
 
 		select { // wait for message emission
-		case <-closed:
+		case <-ctx.Done():
 			return nil
 		// TODO: lock should also be extended here if GracePeriod is running out
 		case s.destination <- msg:
@@ -116,7 +116,8 @@ func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
 
 		// waitForMessageAcknowledgement:
 		select {
-		case <-closed:
+		case <-ctx.Done():
+			msg.Nack()
 			return nil
 		// case <-s.lockTicker.C:
 		// 	if err := s.ExtendLock(); err != nil {
@@ -137,7 +138,7 @@ func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
 	}
 }
 
-func (s *subscription) Loop(closed <-chan struct{}) {
+func (s *subscription) Loop(ctx context.Context) {
 	// TODO: defer close?
 	var (
 		batch []rawMessage
@@ -147,7 +148,7 @@ func (s *subscription) Loop(closed <-chan struct{}) {
 loop:
 	for {
 		select {
-		case <-closed:
+		case <-ctx.Done():
 			return
 		case <-s.pollTicker.C:
 		}
@@ -159,7 +160,7 @@ loop:
 		}
 
 		for _, next := range batch {
-			if err = s.Send(closed, next); err != nil {
+			if err = s.Send(ctx, next); err != nil {
 				s.logger.Error("failed to process queued message", err, nil)
 				continue loop
 			}

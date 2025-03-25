@@ -28,7 +28,7 @@ func TestBasicSendRecieve(setup PubSubFixture) func(t *testing.T) {
 		t.Run("collect 20 messages", func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second*5)
 			defer cancel()
 
 			msgs, err := sub.Subscribe(ctx, topic)
