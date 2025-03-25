@@ -13,10 +13,11 @@ import (
 func NewPubSubFixture(t *testing.T) tests.PubSubFixture {
 	// &_txlock=exclusive
 	connector := wmsqlitemodernc.NewConnector(fmt.Sprintf(
-		"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared",
+		"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
 		t.TempDir(),
 		"db.sqlite3",
 	))
+	// connector := wmsqlitemodernc.NewEphemeralConnector()
 
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 		pub, err := wmsqlitemodernc.NewPublisher(wmsqlitemodernc.PublisherConfiguration{

@@ -27,8 +27,10 @@ func NewConnector(dsn string) Connector {
 }
 
 func NewEphemeralConnector() Connector {
-	db, err := sql.Open("sqlite", "file:memory:?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared")
+	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
+	// db.SetMaxOpenConns(1) // CRITICAL
 	if err != nil {
+		// panic(err)
 		err = fmt.Errorf("unable to create RAM emphemeral database connection: %w", err)
 		return ConnectorFunc(func() (*sql.DB, error) {
 			return nil, err

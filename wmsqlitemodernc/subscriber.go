@@ -81,8 +81,10 @@ func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 			}
 		}
 	}
+
+	ID := uuid.New().String()
 	return &subscriber{
-		UUID:          uuid.New().String(),
+		UUID:          ID,
 		consumerGroup: cfg.ConsumerGroup,
 		batchSize:     cmp.Or(cfg.BatchSize, 10),
 		connector:     cfg.Connector,
@@ -99,7 +101,10 @@ func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 		logger: cmp.Or[watermill.LoggerAdapter](
 			cfg.Logger,
 			watermill.NewSlogLogger(nil),
-		),
+		).With(watermill.LogFields{
+			"subscriber_id":  ID,
+			"consumer_group": cfg.ConsumerGroup,
+		}),
 		subscribeWg: &sync.WaitGroup{},
 	}, nil
 }
@@ -155,9 +160,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		destination: make(chan *message.Message),
 		logger: s.logger.With(
 			watermill.LogFields{
-				"subscriber_id":  s.UUID,
-				"consumer_group": s.consumerGroup,
-				"topic":          topic,
+				"topic": topic,
 			},
 		),
 	}

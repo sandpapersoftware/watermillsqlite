@@ -12,6 +12,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
 )
 
 type PublisherConfiguration struct {
@@ -22,6 +23,7 @@ type PublisherConfiguration struct {
 }
 
 type publisher struct {
+	UUID                      string
 	db                        *sql.DB
 	generateMessagesTableName TableNameGenerator
 	generateOffsetsTableName  TableNameGenerator
@@ -37,8 +39,10 @@ func NewPublisher(cfg PublisherConfiguration) (message.Publisher, error) {
 		return nil, err
 	}
 
+	ID := uuid.New().String()
 	return &publisher{
-		db: db,
+		UUID: ID,
+		db:   db,
 		generateMessagesTableName: cmp.Or(
 			cfg.GenerateMessagesTableName,
 			DefaultMessagesTableNameGenerator,
@@ -50,7 +54,9 @@ func NewPublisher(cfg PublisherConfiguration) (message.Publisher, error) {
 		logger: cmp.Or[watermill.LoggerAdapter](
 			cfg.Logger,
 			watermill.NewSlogLogger(nil),
-		),
+		).With(watermill.LogFields{
+			"publisher_id": ID,
+		}),
 		mu:          sync.Mutex{},
 		knownTopics: make(map[string]struct{}),
 	}, nil
@@ -105,5 +111,5 @@ func (p *publisher) Close() error {
 }
 
 func (p *publisher) String() string {
-	return "sqlite3-modernc-publisher"
+	return "sqlite3-modernc-publisher" + p.UUID
 }

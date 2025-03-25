@@ -12,7 +12,7 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [ ] sending a message to output channel
     - [ ] waiting for message acknowledgement
 - [ ] Drop `subscription` in favor of handling output channels all within `subscriber` like the official SQL implementation? The tickers are needlessly duplicated - there is enough of one per consumer group. Likewise, only one writer can acquire a row lock, so duplicate SQL strings are sitting idle in parallel subscribers.
-- [ ] Ephemeral in-memory `Connector` must also satisfy tests.
+- [ ] Ephemeral in-memory `Connector` must also satisfy tests. Right now it dead-locks. `topic_test` works with in-memory connector, because all operations are in the same thread.
 - [ ] add `NewDeduplicator` constructor for deduplication middleware.
 - Pass official implementation acceptance tests:
     - [x] tests.TestPublishSubscribe
@@ -33,5 +33,5 @@ Current architectural decision is to lock a consumer group offset using `unixepo
 
 ## Similar Projects
 
-- <https://github.com/walterwanderley/watermill-sqlite>
-- <https://github.com/ov2b/watermill-sqlite3>
+- <https://github.com/walterwanderley/watermill-sqlite> - requires CGO for `mattn/go-sqlite3` dependency
+<!-- - <https://github.com/ov2b/watermill-sqlite3> - author requested removal of the mention, because it is a very rough draft -->
