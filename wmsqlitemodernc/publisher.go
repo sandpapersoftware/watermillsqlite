@@ -2,6 +2,7 @@ package wmsqlitemodernc
 
 import (
 	"cmp"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -64,7 +65,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	p.mu.Lock()
 	if _, ok := p.knownTopics[topic]; !ok {
 		if err = createTopicAndOffsetsTablesIfAbsent(
-			messages[0].Context(),
+			context.TODO(), // using the context of the first message was failing an official implementation test
 			p.db,
 			messagesTableName,
 			p.generateOffsetsTableName.GenerateTableName(topic),

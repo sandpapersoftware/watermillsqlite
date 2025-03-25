@@ -98,15 +98,20 @@ func (s *subscription) ExtendLock() error {
 }
 
 func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
 	for {
 		msg := message.NewMessage(next.UUID, next.Payload)
 		msg.Metadata = next.Metadata
+		msg.SetContext(ctx) // required for passing official PubSub test tests.TestMessageCtx
 
 		select { // wait for message emission
 		case <-closed:
 			return nil
 		// TODO: lock should also be extended here if GracePeriod is running out
 		case s.destination <- msg:
+			// panic("sent")
 		}
 
 		// waitForMessageAcknowledgement:

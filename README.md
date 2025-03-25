@@ -19,6 +19,7 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [x] tests.TestConcurrentSubscribe
     - [x] tests.TestConcurrentSubscribeMultipleTopics
     - [x] tests.TestResendOnError
+    - [x] tests.TestNoAck
     - [x] tests.TestContinueAfterSubscribeClose
     - [x] tests.TestConcurrentClose
     - [x] tests.TestContinueAfterErrors
@@ -26,7 +27,6 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [x] tests.TestPublisherClose
     - [x] tests.TestTopic
     - [x] tests.TestNewSubscriberReceivesOldMessages
-    - [ ] tests.TestNoAck
     - [ ] tests.TestMessageCtx
     - [ ] tests.TestSubscribeCtx // hangs
     - [ ] consumer group tests

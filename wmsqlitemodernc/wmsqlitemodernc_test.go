@@ -48,7 +48,9 @@ func NewPubSubFixture(t *testing.T) tests.PubSubFixture {
 }
 
 func TestPubSub(t *testing.T) {
-	// t.Skip("focusing to acceptance tests")
+	if testing.Short() {
+		t.Skip("focusing to acceptance tests")
+	}
 	setup := NewPubSubFixture(t)
 	t.Run("basic functionality", tests.TestBasicSendRecieve(setup))
 	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(setup, 1000))
