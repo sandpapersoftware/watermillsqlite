@@ -8,9 +8,9 @@ import (
 
 func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) {
 	return func(t *testing.T) {
-		// if testing.Short() {
-		// 	t.Skip("skipping acceptance tests in short mode")
-		// }
+		if testing.Short() {
+			t.Skip("skipping acceptance tests in short mode")
+		}
 		features := tests.Features{
 			// ConsumerGroups should be true, if consumer groups are supported.
 			ConsumerGroups: true,
@@ -48,6 +48,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		tests.TestConcurrentSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestConcurrentSubscribeMultipleTopics(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestResendOnError(t, tCtx, fixture.WithConsumerGroup("test"))
+		tests.TestNoAck(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestContinueAfterSubscribeClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestConcurrentClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestContinueAfterErrors(t, tCtx, fixture.WithConsumerGroup("test"))
@@ -56,7 +57,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		tests.TestTopic(t, tCtx, fixture.WithConsumerGroup("test"))
 		tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
 
-		// tests.TestNoAck(t, tCtx, fixture.WithConsumerGroup("test"))
+		// TODO: pass the tests below
 		// tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test")) // hangs
 

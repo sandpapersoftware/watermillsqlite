@@ -140,6 +140,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	sub := &subscription{
 		db:                   db,
 		pollTicker:           time.NewTicker(time.Millisecond * 20),
+		lockTicker:           time.NewTicker(time.Second * time.Duration(graceSeconds-1)),
 		ackChannel:           s.ackChannel,
 		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),

@@ -15,6 +15,7 @@ import (
 type subscription struct {
 	db                     *sql.DB
 	pollTicker             *time.Ticker
+	lockTicker             *time.Ticker
 	ackChannel             func() <-chan time.Time
 	sqlLockConsumerGroup   string
 	sqlExtendLock          string
@@ -59,6 +60,7 @@ func (s *subscription) nextBatch() (
 		}
 		return nil, fmt.Errorf("unable to scan offset_acked value: %w", err)
 	}
+	s.lastAckedOffset = s.lockedOffset
 
 	rows, err := tx.Query(s.sqlNextMessageBatch, s.lockedOffset)
 	if err != nil {
@@ -85,6 +87,16 @@ func (s *subscription) nextBatch() (
 	return batch, errors.Join(rows.Close(), tx.Commit())
 }
 
+func (s *subscription) ExtendLock() error {
+	// fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup)
+	row := s.db.QueryRow(s.sqlExtendLock, s.lastAckedOffset, s.lockedOffset)
+	if err := row.Err(); err != nil {
+		return fmt.Errorf("unable to extend lock: %w", err)
+	}
+	s.lockedOffset = s.lastAckedOffset
+	return nil
+}
+
 func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
 	for {
 		msg := message.NewMessage(next.UUID, next.Payload)
@@ -93,25 +105,28 @@ func (s *subscription) Send(closed <-chan struct{}, next rawMessage) error {
 		select { // wait for message emission
 		case <-closed:
 			return nil
+		// TODO: lock should also be extended here if GracePeriod is running out
 		case s.destination <- msg:
 		}
 
-		select { // wait for message acknowledgement
+		// waitForMessageAcknowledgement:
+		select {
 		case <-closed:
 			return nil
-		case <-s.pollTicker.C:
-			row := s.db.QueryRow(s.sqlExtendLock, next.Offset, s.lastAckedOffset)
-			if err := row.Err(); err != nil {
-				return fmt.Errorf("unable to extend lock: %w", err)
-			}
-			s.lockedOffset = s.lastAckedOffset
+		// case <-s.lockTicker.C:
+		// 	if err := s.ExtendLock(); err != nil {
+		// 		return err
+		// 	}
+		// 	goto waitForMessageAcknowledgement
 		case <-msg.Acked():
 			s.lastAckedOffset = next.Offset
 			return nil
 		case <-s.ackChannel():
-			// TODO: extend deadline? s.db.QueryRow(s.sqlExtendLock, next.Offset, lockedOffset)
 			s.logger.Debug("message took too long to be acknowledged", nil)
 			msg.Nack()
+			if err := s.ExtendLock(); err != nil {
+				return err
+			}
 		case <-msg.Nacked():
 		}
 	}
@@ -145,14 +160,12 @@ loop:
 			}
 		}
 
-		if s.lastAckedOffset > s.lockedOffset {
-			if _, err = s.db.Exec(
-				s.sqlAcknowledgeMessages,
-				s.lastAckedOffset,
-				s.lockedOffset,
-			); err != nil {
-				s.logger.Error("failed to acknowledge processed messages", err, nil)
-			}
+		if _, err = s.db.Exec(
+			s.sqlAcknowledgeMessages,
+			s.lastAckedOffset,
+			s.lockedOffset,
+		); err != nil {
+			s.logger.Error("failed to acknowledge processed messages", err, nil)
 		}
 	}
 }
