@@ -19,12 +19,13 @@ var (
 	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
 )
 
-type SubscriberConfiguration struct {
+type SubscriberOptions struct {
 	ConsumerGroup string
 	// InitializeSchema bool
-	BatchSize    int
-	Connector    Connector
-	PollInterval time.Duration
+	BatchSize           int
+	Connector           Connector
+	TableNameGenerators TableNameGenerators
+	PollInterval        time.Duration
 
 	// AckDeadline is the time to wait for acking a message.
 	// If message is not acked within this time, it will be nacked and re-delivered.
@@ -62,15 +63,15 @@ func defaultAckChannel() <-chan time.Time {
 	return time.After(time.Second * 30)
 }
 
-func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
+func NewSubscriber(config SubscriberOptions) (message.Subscriber, error) {
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	// TODO: validate batch size
 	// TODO: validate poll interval, and it must be less than lock timeout
 
 	ackChannel := defaultAckChannel
-	if cfg.AckDeadline != nil {
-		deadline := *cfg.AckDeadline
+	if config.AckDeadline != nil {
+		deadline := *config.AckDeadline
 		if deadline < 0 {
 			return nil, errors.New("AckDeadline must be above 0")
 		}
@@ -84,21 +85,22 @@ func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 	}
 
 	ID := uuid.New().String()
+	tng := config.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
 	return &subscriber{
 		UUID:                      ID,
-		consumerGroup:             cfg.ConsumerGroup,
-		batchSize:                 cmp.Or(cfg.BatchSize, 10),
-		connector:                 cfg.Connector,
+		consumerGroup:             config.ConsumerGroup,
+		batchSize:                 cmp.Or(config.BatchSize, 10),
+		connector:                 config.Connector,
 		ackChannel:                ackChannel,
 		closed:                    make(chan struct{}),
-		TopicTableNameGenerator:   cfg.Connector.GetTopicTableNameGenerator(),
-		OffsetsTableNameGenerator: cfg.Connector.GetOffsetsTableNameGenerator(),
+		TopicTableNameGenerator:   tng.Topic,
+		OffsetsTableNameGenerator: tng.Offsets,
 		logger: cmp.Or[watermill.LoggerAdapter](
-			cfg.Logger,
+			config.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
 			"subscriber_id":  ID,
-			"consumer_group": cfg.ConsumerGroup,
+			"consumer_group": config.ConsumerGroup,
 		}),
 		subscribeWg: &sync.WaitGroup{},
 	}, nil
@@ -115,8 +117,8 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if err != nil {
 		return nil, err
 	}
-	messagesTableName := s.TopicTableNameGenerator.GenerateTableName(topic)
-	offsetsTableName := s.OffsetsTableNameGenerator.GenerateTableName(topic)
+	messagesTableName := s.TopicTableNameGenerator(topic)
+	offsetsTableName := s.OffsetsTableNameGenerator(topic)
 	if err = createTopicAndOffsetsTablesIfAbsent(
 		ctx,
 		db,

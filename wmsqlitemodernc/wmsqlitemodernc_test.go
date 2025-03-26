@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var ephemeralDB = NewPubSubFixture(wmsqlitemodernc.NewGlobalInMemoryEphemeralConnector(context.Background(), wmsqlitemodernc.ConnectorConfiguration{}))
+var ephemeralDB = NewPubSubFixture(wmsqlitemodernc.NewGlobalInMemoryEphemeralConnector(context.Background()))
 
 func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
 	// &_txlock=exclusive
@@ -25,7 +25,7 @@ func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 		pub, err := wmsqlitemodernc.NewPublisher(
 			t.Context(),
-			wmsqlitemodernc.PublisherConfiguration{
+			wmsqlitemodernc.PublisherOptions{
 				Connector: connector,
 			})
 		if err != nil {
@@ -37,7 +37,7 @@ func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
 			}
 		})
 
-		sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberConfiguration{
+		sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberOptions{
 			ConsumerGroup: consumerGroup,
 			Connector:     connector,
 		})
@@ -69,7 +69,7 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 			"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
 			t.TempDir(),
 			"db.sqlite3",
-		), wmsqlitemodernc.ConnectorConfiguration{}),
+		)),
 	)))
 	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(ephemeralDB))
 }
