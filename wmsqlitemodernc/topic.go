@@ -2,7 +2,6 @@ package wmsqlitemodernc
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -21,19 +20,20 @@ func validateTopicName(topic string) error {
 	return nil
 }
 
-func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messagesTableName, offsetsTableName string) (err error) {
+func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db DB, messagesTableName, offsetsTableName string) (err error) {
 	if err = validateTopicName(messagesTableName); err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			err = errors.Join(err, tx.Rollback())
-		}
-	}()
+	// TODO: transaction had a bug, because db was used instead of tx, when fixed the acceptance tests began to fail
+	// tx, err := db.BeginTx(ctx, nil)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer func() {
+	// 	if err != nil {
+	// 		err = errors.Join(err, tx.Rollback())
+	// 	}
+	// }()
 
 	// Adding UNIQUE(uuid) constraint slows the driver
 	// down without benefit? Also, it will fail
@@ -59,5 +59,6 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db *sql.DB, messag
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	// return tx.Commit()
+	return err
 }

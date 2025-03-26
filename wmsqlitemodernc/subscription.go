@@ -13,7 +13,7 @@ import (
 )
 
 type subscription struct {
-	db                     *sql.DB
+	db                     DB
 	pollTicker             *time.Ticker
 	lockDuration           time.Duration
 	ackChannel             func() <-chan time.Time
@@ -49,7 +49,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 		}
 	}()
 
-	lock := tx.QueryRow(s.sqlLockConsumerGroup)
+	lock := tx.QueryRowContext(ctx, s.sqlLockConsumerGroup)
 	if err = lock.Err(); err != nil {
 		return nil, fmt.Errorf("unable to acquire row lock: %w", err)
 	}
@@ -62,7 +62,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	}
 	s.lastAckedOffset = s.lockedOffset
 
-	rows, err := tx.Query(s.sqlNextMessageBatch, s.lockedOffset)
+	rows, err := tx.QueryContext(ctx, s.sqlNextMessageBatch, s.lockedOffset)
 	if err != nil {
 		return nil, err
 	}

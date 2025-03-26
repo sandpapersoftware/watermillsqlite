@@ -8,10 +8,6 @@ import (
 
 func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) {
 	return func(t *testing.T) {
-		if testing.Short() {
-			t.Skip("skipping acceptance tests in short mode")
-		}
-
 		features := tests.Features{
 			// ConsumerGroups should be true, if consumer groups are supported.
 			ConsumerGroups: true,

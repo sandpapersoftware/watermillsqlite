@@ -1,6 +1,7 @@
 package wmsqlitemodernc
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -8,44 +9,62 @@ import (
 )
 
 type DB interface {
-	Exec(query string, args ...any) (sql.Result, error)
-	Query(query string, args ...any) (*sql.Rows, error)
-	QueryRow(query string, args ...any) *sql.Row
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Close() error
 }
 
 // return New("file:memory:?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared", poolSize)
 // &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
 
 type Connector interface {
-	Connect() (*sql.DB, error)
+	Connect() (DB, error)
 }
 
-type ConnectorFunc func() (*sql.DB, error)
+type ConnectorFunc func() (DB, error)
 
-func (f ConnectorFunc) Connect() (*sql.DB, error) {
+func (f ConnectorFunc) Connect() (DB, error) {
 	return f()
 }
 
 func NewConnector(dsn string) Connector {
-	return ConnectorFunc(func() (*sql.DB, error) {
+	return ConnectorFunc(func() (DB, error) {
 		return sql.Open("sqlite", dsn)
 	})
 }
 
-func NewEphemeralConnector() Connector {
+type contextBoundDB struct {
+	DB
+}
+
+func NewContextBoundDB(ctx context.Context, db DB) DB {
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		db.Close()
+	}(ctx)
+	return &contextBoundDB{DB: db}
+}
+
+func (c *contextBoundDB) Close() error {
+	return nil
+}
+
+func NewGlobalInMemoryEphemeralConnector(ctx context.Context) Connector {
 	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
 	// db, err := sql.Open("sqlite", ":memory:")
-	// db.SetMaxOpenConns(1) // causes deadlock
+	db.SetMaxOpenConns(1)
 	if err != nil {
 		// panic(err)
 		err = fmt.Errorf("unable to create RAM emphemeral database connection: %w", err)
-		return ConnectorFunc(func() (*sql.DB, error) {
+		return ConnectorFunc(func() (DB, error) {
 			return nil, err
 		})
 	}
 
-	return ConnectorFunc(func() (*sql.DB, error) {
-		return db, nil
+	return ConnectorFunc(func() (DB, error) {
+		return NewContextBoundDB(ctx, db), nil
 	})
 }
 

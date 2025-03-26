@@ -3,7 +3,6 @@ package wmsqlitemodernc
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -25,7 +24,7 @@ type PublisherConfiguration struct {
 type publisher struct {
 	Context                   context.Context
 	UUID                      string
-	db                        *sql.DB
+	db                        DB
 	generateMessagesTableName TableNameGenerator
 	generateOffsetsTableName  TableNameGenerator
 	logger                    watermill.LoggerAdapter // TODO: Implement logging
