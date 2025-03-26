@@ -26,7 +26,7 @@ func TestTopicTableCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(t.Context(), `
 	SELECT
 	    name
 	FROM

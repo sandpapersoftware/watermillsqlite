@@ -20,9 +20,11 @@ func NewPubSubFixture(t *testing.T) tests.PubSubFixture {
 	// connector := wmsqlitemodernc.NewEphemeralConnector()
 
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
-		pub, err := wmsqlitemodernc.NewPublisher(wmsqlitemodernc.PublisherConfiguration{
-			Connector: connector,
-		})
+		pub, err := wmsqlitemodernc.NewPublisher(
+			t.Context(),
+			wmsqlitemodernc.PublisherConfiguration{
+				Connector: connector,
+			})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
 		}

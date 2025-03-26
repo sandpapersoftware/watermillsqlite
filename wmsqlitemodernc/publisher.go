@@ -23,6 +23,7 @@ type PublisherConfiguration struct {
 }
 
 type publisher struct {
+	Context                   context.Context
 	UUID                      string
 	db                        *sql.DB
 	generateMessagesTableName TableNameGenerator
@@ -33,7 +34,7 @@ type publisher struct {
 	knownTopics map[string]struct{}
 }
 
-func NewPublisher(cfg PublisherConfiguration) (message.Publisher, error) {
+func NewPublisher(ctx context.Context, cfg PublisherConfiguration) (message.Publisher, error) {
 	db, err := cfg.Connector.Connect()
 	if err != nil {
 		return nil, err
@@ -41,8 +42,9 @@ func NewPublisher(cfg PublisherConfiguration) (message.Publisher, error) {
 
 	ID := uuid.New().String()
 	return &publisher{
-		UUID: ID,
-		db:   db,
+		Context: ctx,
+		UUID:    ID,
+		db:      db,
 		generateMessagesTableName: cmp.Or(
 			cfg.GenerateMessagesTableName,
 			DefaultMessagesTableNameGenerator,
@@ -68,10 +70,12 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 	messagesTableName := p.generateMessagesTableName.GenerateTableName(topic)
 
+	ctx, cancel := context.WithTimeout(p.Context, time.Second*15)
+	defer cancel()
 	p.mu.Lock()
 	if _, ok := p.knownTopics[topic]; !ok {
 		if err = createTopicAndOffsetsTablesIfAbsent(
-			context.TODO(), // using the context of the first message was failing an official implementation test
+			ctx,
 			p.db,
 			messagesTableName,
 			p.generateOffsetsTableName.GenerateTableName(topic),
@@ -99,7 +103,8 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		// fmt.Println("queued up message for publication:", msg.UUID)
 	}
 
-	_, err = p.db.Exec(
+	_, err = p.db.ExecContext(
+		ctx,
 		strings.TrimRight(query.String(), ","),
 		values...,
 	)

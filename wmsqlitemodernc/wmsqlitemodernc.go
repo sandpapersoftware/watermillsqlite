@@ -7,6 +7,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type DB interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // return New("file:memory:?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared", poolSize)
 // &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
 
@@ -28,7 +34,8 @@ func NewConnector(dsn string) Connector {
 
 func NewEphemeralConnector() Connector {
 	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
-	// db.SetMaxOpenConns(1) // CRITICAL
+	// db, err := sql.Open("sqlite", ":memory:")
+	// db.SetMaxOpenConns(1) // causes deadlock
 	if err != nil {
 		// panic(err)
 		err = fmt.Errorf("unable to create RAM emphemeral database connection: %w", err)

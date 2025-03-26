@@ -35,11 +35,11 @@ type rawMessage struct {
 	Metadata message.Metadata
 }
 
-func (s *subscription) nextBatch() (
+func (s *subscription) nextBatch(ctx context.Context) (
 	batch []rawMessage,
 	err error,
 ) {
-	tx, err := s.db.BeginTx(context.TODO(), nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -87,9 +87,9 @@ func (s *subscription) nextBatch() (
 	return batch, errors.Join(rows.Close(), tx.Commit())
 }
 
-func (s *subscription) ExtendLock() error {
+func (s *subscription) ExtendLock(ctx context.Context) error {
 	// fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup)
-	row := s.db.QueryRow(s.sqlExtendLock, s.lastAckedOffset, s.lockedOffset)
+	row := s.db.QueryRowContext(ctx, s.sqlExtendLock, s.lastAckedOffset, s.lockedOffset)
 	if err := row.Err(); err != nil {
 		return fmt.Errorf("unable to extend lock: %w", err)
 	}
@@ -125,7 +125,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		// make sure hungLongAck test behaves properly
 		case <-time.After(s.lockDuration):
 			// panic("extend lock")
-			if err := s.ExtendLock(); err != nil {
+			if err := s.ExtendLock(ctx); err != nil {
 				return err
 			}
 			goto waitForMessageAcknowledgement
@@ -135,7 +135,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-s.ackChannel():
 			s.logger.Debug("message took too long to be acknowledged", nil)
 			msg.Nack()
-			if err := s.ExtendLock(); err != nil {
+			if err := s.ExtendLock(ctx); err != nil {
 				return err
 			}
 		case <-msg.Nacked():
@@ -157,7 +157,7 @@ loop:
 		case <-s.pollTicker.C:
 		}
 
-		batch, err = s.nextBatch()
+		batch, err = s.nextBatch(ctx)
 		if err != nil {
 			s.logger.Error("next message batch query failed", err, nil)
 			continue loop
@@ -166,7 +166,8 @@ loop:
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil {
 				s.logger.Error("failed to process queued message", err, nil)
-				if _, err = s.db.Exec(
+				if _, err = s.db.ExecContext(
+					ctx,
 					s.sqlAcknowledgeMessages,
 					s.lastAckedOffset,
 					s.lockedOffset,
@@ -178,7 +179,8 @@ loop:
 			}
 		}
 
-		if _, err = s.db.Exec(
+		if _, err = s.db.ExecContext(
+			ctx,
 			s.sqlAcknowledgeMessages,
 			s.lastAckedOffset,
 			s.lockedOffset,
