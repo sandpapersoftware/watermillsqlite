@@ -5,18 +5,14 @@ import (
 )
 
 func TestTopicTableCreation(t *testing.T) {
-	db, err := NewGlobalInMemoryEphemeralConnector(t.Context()).Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := NewGlobalInMemoryEphemeralConnector(t.Context())
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
-
 	})
 
-	err = createTopicAndOffsetsTablesIfAbsent(
+	err := createTopicAndOffsetsTablesIfAbsent(
 		t.Context(),
 		db,
 		"messagesTableName",

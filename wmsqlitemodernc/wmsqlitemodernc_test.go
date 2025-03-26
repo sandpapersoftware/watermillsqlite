@@ -2,6 +2,7 @@ package wmsqlitemodernc_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 
 var ephemeralDB = NewPubSubFixture(wmsqlitemodernc.NewGlobalInMemoryEphemeralConnector(context.Background()))
 
-func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
+func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 	// &_txlock=exclusive
 	// connector := wmsqlitemodernc.NewConnector(fmt.Sprintf(
 	// 	"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
@@ -24,9 +25,9 @@ func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
 
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 		pub, err := wmsqlitemodernc.NewPublisher(
-			t.Context(),
+			db,
 			wmsqlitemodernc.PublisherOptions{
-				Connector: connector,
+				ParentContext: t.Context(),
 			})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
@@ -37,9 +38,8 @@ func NewPubSubFixture(connector wmsqlitemodernc.Connector) tests.PubSubFixture {
 			}
 		})
 
-		sub, err := wmsqlitemodernc.NewSubscriber(wmsqlitemodernc.SubscriberOptions{
+		sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{
 			ConsumerGroup: consumerGroup,
-			Connector:     connector,
 		})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
@@ -61,15 +61,25 @@ func TestPubSub(t *testing.T) {
 }
 
 func TestOfficialImplementationAcceptance(t *testing.T) {
+	file, err := sql.Open("sqlite", fmt.Sprintf(
+		"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
+		t.TempDir(),
+		"db.sqlite3",
+	))
+	if err != nil {
+		t.Fatal("unable to open database:", err)
+	}
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Fatal("unable to close test SQLite database", err)
+		}
+	})
+
 	if testing.Short() {
 		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
 	}
 	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewPubSubFixture(
-		wmsqlitemodernc.NewConnector(fmt.Sprintf(
-			"file://%s/%s?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
-			t.TempDir(),
-			"db.sqlite3",
-		)),
+		file,
 	)))
 	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(ephemeralDB))
 }

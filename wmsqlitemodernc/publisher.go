@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,9 +15,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// PublisherOptions customize message publishing behavior.
 type PublisherOptions struct {
-	Connector Connector
+	// ParentContext is the context used for deriving all internal publishing operations.
+	// Default value is [context.Background].
+	ParentContext context.Context
 
+	// TableNameGenerators is a set of functions that generate table names for topics and offsets.
+	// Defaults to [TableNameGenerators.WithDefaultGeneratorsInsteadOfNils].
 	TableNameGenerators TableNameGenerators
 
 	// AutoInitializeSchema enables initialization of schema database during publish.
@@ -25,6 +31,7 @@ type PublisherOptions struct {
 	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	AutoInitializeSchema bool
 
+	// Logger reports message publishing errors and traces. Defaults value is [watermill.NewSlogLogger].
 	Logger watermill.LoggerAdapter
 }
 
@@ -40,28 +47,27 @@ type publisher struct {
 	knownTopics map[string]struct{}
 }
 
-func NewPublisher(ctx context.Context, config PublisherOptions) (message.Publisher, error) {
-	// if config.AutoInitializeSchema && isTx(db) {
-	// 	// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
-	// 	return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
-	// 		"an ongoing transaction; this may result in an implicit commit")
-	// }
-
-	db, err := config.Connector.Connect()
-	if err != nil {
-		return nil, err
+// NewPublisher creates a [message.Publisher] instance from a [SQLiteDatabase] connection handler.
+func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publisher, error) {
+	if db == nil {
+		return nil, errors.New("database handle is nil")
+	}
+	if options.AutoInitializeSchema && isTx(db) {
+		// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
+		return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
+			"an ongoing transaction; this may result in an implicit commit")
 	}
 
 	ID := uuid.New().String()
-	tng := config.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
+	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
 	return &publisher{
-		Context:                   ctx,
+		Context:                   cmp.Or(options.ParentContext, context.Background()),
 		UUID:                      ID,
 		DB:                        db,
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
 		Logger: cmp.Or[watermill.LoggerAdapter](
-			config.Logger,
+			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
 			"publisher_id": ID,

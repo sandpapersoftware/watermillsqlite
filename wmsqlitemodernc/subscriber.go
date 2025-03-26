@@ -21,9 +21,16 @@ var (
 
 type SubscriberOptions struct {
 	ConsumerGroup string
-	// InitializeSchema bool
-	BatchSize           int
-	Connector           Connector
+	// InitializeSchema option enables initializing schema on making subscription.
+	InitializeSchema bool
+
+	// BatchSize is the number of messages to read in a single batch.
+	// Defaults to 10.
+	// TODO: batch size of 100 fails to pass tests: investigate.
+	BatchSize int
+
+	// TableNameGenerators is a set of functions that generate table names for topics and offsets.
+	// Defaults to [TableNameGenerators.WithDefaultGeneratorsInsteadOfNils].
 	TableNameGenerators TableNameGenerators
 	PollInterval        time.Duration
 
@@ -38,14 +45,15 @@ type SubscriberOptions struct {
 	// Must be non-negative. Nil value defaults to 30s.
 	AckDeadline *time.Duration
 
+	// Logger reports message consumption errors and traces. Defaults value is [watermill.NewSlogLogger].
 	Logger watermill.LoggerAdapter
 }
 
 type subscriber struct {
+	DB                        SQLiteDatabase
 	UUID                      string
 	consumerGroup             string
 	batchSize                 int
-	connector                 Connector
 	ackChannel                func() <-chan time.Time
 	closed                    chan struct{}
 	TopicTableNameGenerator   TableNameGenerator
@@ -63,15 +71,18 @@ func defaultAckChannel() <-chan time.Time {
 	return time.After(time.Second * 30)
 }
 
-func NewSubscriber(config SubscriberOptions) (message.Subscriber, error) {
+func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscriber, error) {
+	if db == nil {
+		return nil, errors.New("database connection is nil")
+	}
 	// TODO: validate config
 	// TODO: validate consumer group - INJECTION
 	// TODO: validate batch size
 	// TODO: validate poll interval, and it must be less than lock timeout
 
 	ackChannel := defaultAckChannel
-	if config.AckDeadline != nil {
-		deadline := *config.AckDeadline
+	if options.AckDeadline != nil {
+		deadline := *options.AckDeadline
 		if deadline < 0 {
 			return nil, errors.New("AckDeadline must be above 0")
 		}
@@ -85,22 +96,22 @@ func NewSubscriber(config SubscriberOptions) (message.Subscriber, error) {
 	}
 
 	ID := uuid.New().String()
-	tng := config.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
+	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
 	return &subscriber{
+		DB:                        db,
 		UUID:                      ID,
-		consumerGroup:             config.ConsumerGroup,
-		batchSize:                 cmp.Or(config.BatchSize, 10),
-		connector:                 config.Connector,
+		consumerGroup:             options.ConsumerGroup,
+		batchSize:                 cmp.Or(options.BatchSize, 10),
 		ackChannel:                ackChannel,
 		closed:                    make(chan struct{}),
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
 		logger: cmp.Or[watermill.LoggerAdapter](
-			config.Logger,
+			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
 			"subscriber_id":  ID,
-			"consumer_group": config.ConsumerGroup,
+			"consumer_group": options.ConsumerGroup,
 		}),
 		subscribeWg: &sync.WaitGroup{},
 	}, nil
@@ -113,34 +124,30 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	default:
 	}
 
-	db, err := s.connector.Connect()
-	if err != nil {
-		return nil, err
-	}
 	messagesTableName := s.TopicTableNameGenerator(topic)
 	offsetsTableName := s.OffsetsTableNameGenerator(topic)
 	if err = createTopicAndOffsetsTablesIfAbsent(
 		ctx,
-		db,
+		s.DB,
 		messagesTableName,
 		offsetsTableName,
 	); err != nil {
-		return nil, errors.Join(err, db.Close())
+		return nil, err
 	}
 
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`
+	_, err = s.DB.ExecContext(ctx, fmt.Sprintf(`
 		INSERT INTO '%s' (consumer_group, offset_acked, locked_until)
 		VALUES ("%s", 0, 0)
 		ON CONFLICT(consumer_group) DO NOTHING;
 	`, offsetsTableName, s.consumerGroup))
 	if err != nil {
-		return nil, errors.Join(err, db.Close())
+		return nil, err
 	}
 
 	// TODO: customize batch size
 	graceSeconds := 5 // TODO: customize grace period
 	sub := &subscription{
-		DB:           db,
+		DB:           s.DB,
 		pollTicker:   time.NewTicker(time.Millisecond * 20),
 		lockTicker:   time.NewTicker(time.Second * time.Duration(graceSeconds-1)),
 		lockDuration: time.Second * time.Duration(graceSeconds-1),

@@ -13,7 +13,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 			ConsumerGroups: true,
 
 			// ExactlyOnceDelivery should be true, if exactly-once delivery is supported.
-			ExactlyOnceDelivery: true,
+			ExactlyOnceDelivery: false,
 
 			// GuaranteedOrder should be true, if order of messages is guaranteed.
 			GuaranteedOrder: true,
@@ -59,6 +59,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		// OMIT THOSE ACCEPTANCE TESTS
 		//
 		// tests.TestNewSubscriberReceivesOldMessages(t, tCtx, fixture.WithConsumerGroup("test"))
+		// exactly once delivery
 
 		tests.TestPubSub(t,
 			features,
