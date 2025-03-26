@@ -44,7 +44,13 @@ func (s *subscription) nextBatch(ctx context.Context) (
 		return nil, err
 	}
 	defer func() {
-		if err != nil {
+		switch err {
+		case nil:
+			err = tx.Commit()
+		case ErrConsumerGroupIsLocked:
+			// ignore error because operation failed to acquire row lock
+			err = tx.Rollback()
+		default:
 			err = errors.Join(err, tx.Rollback())
 		}
 	}()
@@ -55,8 +61,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	}
 	if err = lock.Scan(&s.lockedOffset); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// row already locked by another consumer
-			return nil, tx.Rollback()
+			return nil, ErrConsumerGroupIsLocked
 		}
 		return nil, fmt.Errorf("unable to scan offset_acked value: %w", err)
 	}
@@ -84,7 +89,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	if err := rows.Err(); err != nil {
 		return nil, errors.Join(err, rows.Close())
 	}
-	return batch, errors.Join(rows.Close(), tx.Commit())
+	return batch, rows.Close()
 }
 
 func (s *subscription) ExtendLock(ctx context.Context) error {

@@ -15,17 +15,16 @@ import (
 
 var (
 	ErrClosed                   = errors.New("subscriber is closed")
+	ErrConsumerGroupIsLocked    = errors.New("consumer group is locked")
 	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
 )
 
 type SubscriberConfiguration struct {
 	ConsumerGroup string
 	// InitializeSchema bool
-	BatchSize                 int
-	GenerateMessagesTableName TableNameGenerator
-	GenerateOffsetsTableName  TableNameGenerator
-	Connector                 Connector
-	PollInterval              time.Duration
+	BatchSize    int
+	Connector    Connector
+	PollInterval time.Duration
 
 	// AckDeadline is the time to wait for acking a message.
 	// If message is not acked within this time, it will be nacked and re-delivered.
@@ -48,8 +47,8 @@ type subscriber struct {
 	connector                 Connector
 	ackChannel                func() <-chan time.Time
 	closed                    chan struct{}
-	generateMessagesTableName TableNameGenerator
-	generateOffsetsTableName  TableNameGenerator
+	TopicTableNameGenerator   TableNameGenerator
+	OffsetsTableNameGenerator TableNameGenerator
 	logger                    watermill.LoggerAdapter
 
 	subscribeWg *sync.WaitGroup
@@ -86,20 +85,14 @@ func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 
 	ID := uuid.New().String()
 	return &subscriber{
-		UUID:          ID,
-		consumerGroup: cfg.ConsumerGroup,
-		batchSize:     cmp.Or(cfg.BatchSize, 10),
-		connector:     cfg.Connector,
-		ackChannel:    ackChannel,
-		closed:        make(chan struct{}),
-		generateMessagesTableName: cmp.Or(
-			cfg.GenerateMessagesTableName,
-			DefaultMessagesTableNameGenerator,
-		),
-		generateOffsetsTableName: cmp.Or(
-			cfg.GenerateOffsetsTableName,
-			DefaultOffsetsTableNameGenerator,
-		),
+		UUID:                      ID,
+		consumerGroup:             cfg.ConsumerGroup,
+		batchSize:                 cmp.Or(cfg.BatchSize, 10),
+		connector:                 cfg.Connector,
+		ackChannel:                ackChannel,
+		closed:                    make(chan struct{}),
+		TopicTableNameGenerator:   cfg.Connector.GetTopicTableNameGenerator(),
+		OffsetsTableNameGenerator: cfg.Connector.GetOffsetsTableNameGenerator(),
 		logger: cmp.Or[watermill.LoggerAdapter](
 			cfg.Logger,
 			watermill.NewSlogLogger(nil),
@@ -122,8 +115,8 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if err != nil {
 		return nil, err
 	}
-	messagesTableName := s.generateMessagesTableName.GenerateTableName(topic)
-	offsetsTableName := s.generateOffsetsTableName.GenerateTableName(topic)
+	messagesTableName := s.TopicTableNameGenerator.GenerateTableName(topic)
+	offsetsTableName := s.OffsetsTableNameGenerator.GenerateTableName(topic)
 	if err = createTopicAndOffsetsTablesIfAbsent(
 		ctx,
 		db,

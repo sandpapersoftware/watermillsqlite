@@ -1,6 +1,7 @@
 package wmsqlitemodernc
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -21,51 +22,84 @@ type DB interface {
 
 type Connector interface {
 	Connect() (DB, error)
+	GetTopicTableNameGenerator() TableNameGenerator
+	GetOffsetsTableNameGenerator() TableNameGenerator
 }
 
-type ConnectorFunc func() (DB, error)
-
-func (f ConnectorFunc) Connect() (DB, error) {
-	return f()
+type ConnectorConfiguration struct {
+	TopicTableNameGenerator   TableNameGenerator
+	OffsetsTableNameGenerator TableNameGenerator
 }
 
-func NewConnector(dsn string) Connector {
-	return ConnectorFunc(func() (DB, error) {
-		return sql.Open("sqlite", dsn)
-	})
+type connector struct {
+	DSN                       string
+	TopicTableNameGenerator   TableNameGenerator
+	OffsetsTableNameGenerator TableNameGenerator
+}
+
+func (c connector) Connect() (DB, error) {
+	return sql.Open("sqlite", c.DSN)
+}
+
+func (c connector) GetTopicTableNameGenerator() TableNameGenerator {
+	return c.TopicTableNameGenerator
+}
+
+func (c connector) GetOffsetsTableNameGenerator() TableNameGenerator {
+	return c.OffsetsTableNameGenerator
+}
+
+func NewConnector(dsn string, config ConnectorConfiguration) Connector {
+	return connector{
+		DSN:                       dsn,
+		TopicTableNameGenerator:   cmp.Or(config.TopicTableNameGenerator, DefaultMessagesTableNameGenerator),
+		OffsetsTableNameGenerator: cmp.Or(config.OffsetsTableNameGenerator, DefaultOffsetsTableNameGenerator),
+	}
 }
 
 type contextBoundDB struct {
 	DB
 }
 
-func NewContextBoundDB(ctx context.Context, db DB) DB {
-	go func(ctx context.Context) {
-		<-ctx.Done()
-		db.Close()
-	}(ctx)
-	return &contextBoundDB{DB: db}
-}
-
-func (c *contextBoundDB) Close() error {
+func (c contextBoundDB) Close() error {
 	return nil
 }
 
-func NewGlobalInMemoryEphemeralConnector(ctx context.Context) Connector {
+type contextBoundConnector struct {
+	DB                        DB
+	TopicTableNameGenerator   TableNameGenerator
+	OffsetsTableNameGenerator TableNameGenerator
+}
+
+func (c contextBoundConnector) Connect() (DB, error) {
+	return c.DB, nil
+}
+
+func (c contextBoundConnector) GetTopicTableNameGenerator() TableNameGenerator {
+	return c.TopicTableNameGenerator
+}
+
+func (c contextBoundConnector) GetOffsetsTableNameGenerator() TableNameGenerator {
+	return c.OffsetsTableNameGenerator
+}
+
+func NewGlobalInMemoryEphemeralConnector(ctx context.Context, config ConnectorConfiguration) Connector {
 	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
 	// db, err := sql.Open("sqlite", ":memory:")
 	db.SetMaxOpenConns(1)
 	if err != nil {
-		// panic(err)
-		err = fmt.Errorf("unable to create RAM emphemeral database connection: %w", err)
-		return ConnectorFunc(func() (DB, error) {
-			return nil, err
-		})
+		panic(fmt.Errorf("unable to create RAM emphemeral database connection: %w", err))
 	}
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		db.Close()
+	}(ctx)
 
-	return ConnectorFunc(func() (DB, error) {
-		return NewContextBoundDB(ctx, db), nil
-	})
+	return &contextBoundConnector{
+		DB:                        contextBoundDB{DB: db},
+		TopicTableNameGenerator:   cmp.Or(config.TopicTableNameGenerator, DefaultMessagesTableNameGenerator),
+		OffsetsTableNameGenerator: cmp.Or(config.OffsetsTableNameGenerator, DefaultOffsetsTableNameGenerator),
+	}
 }
 
 type TableNameGenerator interface {

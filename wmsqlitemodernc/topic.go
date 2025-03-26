@@ -24,7 +24,9 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db DB, messagesTab
 	if err = validateTopicName(messagesTableName); err != nil {
 		return err
 	}
-	// TODO: transaction had a bug, because db was used instead of tx, when fixed the acceptance tests began to fail
+	// TODO: TABLE CREATION appears to be an operation forbidden for transactions
+	// when a transaction is used, acceptance tests begin to fail
+	//
 	// tx, err := db.BeginTx(ctx, nil)
 	// if err != nil {
 	// 	return err
@@ -35,11 +37,7 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db DB, messagesTab
 	// 	}
 	// }()
 
-	// Adding UNIQUE(uuid) constraint slows the driver
-	// down without benefit? Also, it will fail
-	// the official `TestMessageCtx` acceptance test,
-	// which attempts to send the exact same message twice.
-	// But removing it will fail the bulk insertion test.
+	// adding UNIQUE(uuid) constraint slows the driver down without benefit
 	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+messagesTableName+`' (
 		'offset' INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		uuid TEXT NOT NULL,

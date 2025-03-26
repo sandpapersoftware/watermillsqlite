@@ -15,19 +15,17 @@ import (
 )
 
 type PublisherConfiguration struct {
-	Connector                 Connector
-	GenerateMessagesTableName TableNameGenerator
-	GenerateOffsetsTableName  TableNameGenerator
-	Logger                    watermill.LoggerAdapter
+	Connector Connector
+	Logger    watermill.LoggerAdapter
 }
 
 type publisher struct {
 	Context                   context.Context
+	TopicTableNameGenerator   TableNameGenerator
+	OffsetsTableNameGenerator TableNameGenerator
 	UUID                      string
-	db                        DB
-	generateMessagesTableName TableNameGenerator
-	generateOffsetsTableName  TableNameGenerator
-	logger                    watermill.LoggerAdapter // TODO: Implement logging
+	DB                        DB
+	Logger                    watermill.LoggerAdapter
 
 	mu          sync.Mutex
 	knownTopics map[string]struct{}
@@ -41,18 +39,12 @@ func NewPublisher(ctx context.Context, cfg PublisherConfiguration) (message.Publ
 
 	ID := uuid.New().String()
 	return &publisher{
-		Context: ctx,
-		UUID:    ID,
-		db:      db,
-		generateMessagesTableName: cmp.Or(
-			cfg.GenerateMessagesTableName,
-			DefaultMessagesTableNameGenerator,
-		),
-		generateOffsetsTableName: cmp.Or(
-			cfg.GenerateOffsetsTableName,
-			DefaultOffsetsTableNameGenerator,
-		),
-		logger: cmp.Or[watermill.LoggerAdapter](
+		Context:                   ctx,
+		UUID:                      ID,
+		DB:                        db,
+		TopicTableNameGenerator:   cfg.Connector.GetTopicTableNameGenerator(),
+		OffsetsTableNameGenerator: cfg.Connector.GetOffsetsTableNameGenerator(),
+		Logger: cmp.Or[watermill.LoggerAdapter](
 			cfg.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
@@ -67,7 +59,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	if len(messages) == 0 {
 		return nil
 	}
-	messagesTableName := p.generateMessagesTableName.GenerateTableName(topic)
+	messagesTableName := p.TopicTableNameGenerator.GenerateTableName(topic)
 
 	ctx, cancel := context.WithTimeout(p.Context, time.Second*15)
 	defer cancel()
@@ -75,9 +67,9 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	if _, ok := p.knownTopics[topic]; !ok {
 		if err = createTopicAndOffsetsTablesIfAbsent(
 			ctx,
-			p.db,
+			p.DB,
 			messagesTableName,
-			p.generateOffsetsTableName.GenerateTableName(topic),
+			p.OffsetsTableNameGenerator.GenerateTableName(topic),
 		); err != nil {
 			p.mu.Unlock()
 			return err
@@ -99,10 +91,9 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		}
 		values = append(values, msg.UUID, time.Now().Format(time.RFC3339), msg.Payload, metadata)
 		query.WriteString(`(?,?,?,?),`)
-		// fmt.Println("queued up message for publication:", msg.UUID)
 	}
 
-	_, err = p.db.ExecContext(
+	_, err = p.DB.ExecContext(
 		ctx,
 		strings.TrimRight(query.String(), ","),
 		values...,
@@ -111,9 +102,9 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 }
 
 func (p *publisher) Close() error {
-	return p.db.Close()
+	return p.DB.Close()
 }
 
 func (p *publisher) String() string {
-	return "sqlite3-modernc-publisher" + p.UUID
+	return "sqlite3-modernc-publisher-" + p.UUID
 }

@@ -5,7 +5,7 @@ import (
 )
 
 func TestTopicTableCreation(t *testing.T) {
-	db, err := NewGlobalInMemoryEphemeralConnector(t.Context()).Connect()
+	db, err := NewGlobalInMemoryEphemeralConnector(t.Context(), ConnectorConfiguration{}).Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
