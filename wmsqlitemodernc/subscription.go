@@ -13,10 +13,12 @@ import (
 )
 
 type subscription struct {
-	db                     DB
-	pollTicker             *time.Ticker
-	lockDuration           time.Duration
-	ackChannel             func() <-chan time.Time
+	DB           SQLiteDatabase
+	pollTicker   *time.Ticker
+	lockTicker   *time.Ticker
+	lockDuration time.Duration
+	ackChannel   func() <-chan time.Time
+
 	sqlLockConsumerGroup   string
 	sqlExtendLock          string
 	sqlNextMessageBatch    string
@@ -39,7 +41,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	batch []rawMessage,
 	err error,
 ) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +96,11 @@ func (s *subscription) nextBatch(ctx context.Context) (
 
 func (s *subscription) ExtendLock(ctx context.Context) error {
 	// fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup)
-	row := s.db.QueryRowContext(ctx, s.sqlExtendLock, s.lastAckedOffset, s.lockedOffset)
+	row := s.DB.QueryRowContext(ctx, s.sqlExtendLock, s.lastAckedOffset, s.lockedOffset)
 	if err := row.Err(); err != nil {
 		return fmt.Errorf("unable to extend lock: %w", err)
 	}
+	s.lockTicker.Reset(s.lockDuration)
 	s.lockedOffset = s.lastAckedOffset
 	return nil
 }
@@ -106,16 +109,16 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
+	s.lockTicker.Reset(s.lockDuration)
 	for {
 		msg := message.NewMessage(next.UUID, next.Payload)
 		msg.Metadata = next.Metadata
 		msg.SetContext(ctx) // required for passing official PubSub test tests.TestMessageCtx
 
-		// s.lockTicker.Reset(d time.Duration)
 		select { // wait for message emission
 		case <-ctx.Done():
 			return nil
-		case <-time.After(s.lockDuration):
+		case <-s.lockTicker.C:
 			return ErrDestinationChannelIsBusy
 		case s.destination <- msg:
 		}
@@ -128,8 +131,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		// TODO: attemped to write a test for this condition
 		// it catches double locking even on short time out
 		// make sure hungLongAck test behaves properly
-		case <-time.After(s.lockDuration):
-			// panic("extend lock")
+		case <-s.lockTicker.C:
 			if err := s.ExtendLock(ctx); err != nil {
 				return err
 			}
@@ -148,7 +150,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 	}
 }
 
-func (s *subscription) Loop(ctx context.Context) {
+func (s *subscription) Run(ctx context.Context) {
 	var (
 		batch []rawMessage
 		err   error
@@ -171,7 +173,7 @@ loop:
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil {
 				s.logger.Error("failed to process queued message", err, nil)
-				if _, err = s.db.ExecContext(
+				if _, err = s.DB.ExecContext(
 					ctx,
 					s.sqlAcknowledgeMessages,
 					s.lastAckedOffset,
@@ -184,7 +186,7 @@ loop:
 			}
 		}
 
-		if _, err = s.db.ExecContext(
+		if _, err = s.DB.ExecContext(
 			ctx,
 			s.sqlAcknowledgeMessages,
 			s.lastAckedOffset,
@@ -193,8 +195,4 @@ loop:
 			s.logger.Error("failed to acknowledge processed messages", err, nil)
 		}
 	}
-}
-
-func (s *subscription) Close() error {
-	return s.db.Close()
 }

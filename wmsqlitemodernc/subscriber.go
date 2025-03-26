@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrClosed                   = errors.New("subscriber is closed")
+	ErrSubscriberClosed         = errors.New("subscriber is closed")
 	ErrConsumerGroupIsLocked    = errors.New("consumer group is locked")
 	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
 )
@@ -107,7 +107,7 @@ func NewSubscriber(cfg SubscriberConfiguration) (message.Subscriber, error) {
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
 	select {
 	case <-s.closed:
-		return nil, ErrClosed
+		return nil, ErrSubscriberClosed
 	default:
 	}
 
@@ -138,10 +138,12 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	// TODO: customize batch size
 	graceSeconds := 5 // TODO: customize grace period
 	sub := &subscription{
-		db:                   db,
-		pollTicker:           time.NewTicker(time.Millisecond * 20),
-		lockDuration:         time.Second * time.Duration(graceSeconds-1),
-		ackChannel:           s.ackChannel,
+		DB:           db,
+		pollTicker:   time.NewTicker(time.Millisecond * 20),
+		lockTicker:   time.NewTicker(time.Second * time.Duration(graceSeconds-1)),
+		lockDuration: time.Second * time.Duration(graceSeconds-1),
+		ackChannel:   s.ackChannel,
+
 		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlNextMessageBatch: fmt.Sprintf(`
@@ -169,7 +171,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	s.subscribeWg.Add(1)
 	go func(ctx context.Context) {
 		defer s.subscribeWg.Done()
-		sub.Loop(ctx)
+		sub.Run(ctx)
 		close(sub.destination)
 		cancel()
 	}(ctx)

@@ -9,7 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type DB interface {
+type SQLiteDatabase interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -21,7 +21,7 @@ type DB interface {
 // &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
 
 type Connector interface {
-	Connect() (DB, error)
+	Connect() (SQLiteDatabase, error)
 	GetTopicTableNameGenerator() TableNameGenerator
 	GetOffsetsTableNameGenerator() TableNameGenerator
 }
@@ -37,7 +37,7 @@ type connector struct {
 	OffsetsTableNameGenerator TableNameGenerator
 }
 
-func (c connector) Connect() (DB, error) {
+func (c connector) Connect() (SQLiteDatabase, error) {
 	return sql.Open("sqlite", c.DSN)
 }
 
@@ -58,7 +58,7 @@ func NewConnector(dsn string, config ConnectorConfiguration) Connector {
 }
 
 type contextBoundDB struct {
-	DB
+	SQLiteDatabase
 }
 
 func (c contextBoundDB) Close() error {
@@ -66,12 +66,12 @@ func (c contextBoundDB) Close() error {
 }
 
 type contextBoundConnector struct {
-	DB                        DB
+	DB                        SQLiteDatabase
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
 }
 
-func (c contextBoundConnector) Connect() (DB, error) {
+func (c contextBoundConnector) Connect() (SQLiteDatabase, error) {
 	return c.DB, nil
 }
 
@@ -84,7 +84,7 @@ func (c contextBoundConnector) GetOffsetsTableNameGenerator() TableNameGenerator
 }
 
 func NewGlobalInMemoryEphemeralConnector(ctx context.Context, config ConnectorConfiguration) Connector {
-	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
+	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared&_txlock=exclusive")
 	// db, err := sql.Open("sqlite", ":memory:")
 	db.SetMaxOpenConns(1)
 	if err != nil {
@@ -96,7 +96,7 @@ func NewGlobalInMemoryEphemeralConnector(ctx context.Context, config ConnectorCo
 	}(ctx)
 
 	return &contextBoundConnector{
-		DB:                        contextBoundDB{DB: db},
+		DB:                        contextBoundDB{SQLiteDatabase: db},
 		TopicTableNameGenerator:   cmp.Or(config.TopicTableNameGenerator, DefaultMessagesTableNameGenerator),
 		OffsetsTableNameGenerator: cmp.Or(config.OffsetsTableNameGenerator, DefaultOffsetsTableNameGenerator),
 	}

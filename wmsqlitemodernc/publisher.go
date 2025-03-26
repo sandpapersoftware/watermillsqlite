@@ -24,7 +24,7 @@ type publisher struct {
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
 	UUID                      string
-	DB                        DB
+	DB                        SQLiteDatabase
 	Logger                    watermill.LoggerAdapter
 
 	mu          sync.Mutex
