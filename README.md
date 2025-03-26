@@ -13,6 +13,8 @@ Current architectural decision is to lock a consumer group offset using `unixepo
     - [ ] waiting for message acknowledgement
 - [ ] Drop `subscription` in favor of handling output channels all within `subscriber` like the official SQL implementation? The tickers are needlessly duplicated - there is enough of one per consumer group. Likewise, only one writer can acquire a row lock, so duplicate SQL strings are sitting idle in parallel subscribers.
 - [ ] Ephemeral in-memory `Connector` must also satisfy tests. Right now it dead-locks. `topic_test` works with in-memory connector, because all operations are in the same thread.
+    - [ ] Prove the theory that `:memory:` connector requires single thread by putting a mutex on all DB operations.
+    - [ ] If the theory is proven, extract all DB operations into `Repository` that can be wrapped with a `SynchronizeRepository(r)r` function that puts a mutual exclusion lock on every operation.
 - [ ] add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Pass official implementation acceptance tests:
     - [x] tests.TestPublishSubscribe

@@ -56,7 +56,7 @@ func TestPubSub(t *testing.T) {
 	setup := NewPubSubFixture(t)
 	t.Run("basic functionality", tests.TestBasicSendRecieve(setup))
 	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(setup, 1000))
-	t.Run("perpetual locks", tests.NewHung(setup))
+	t.Run("perpetual locks", tests.TestHungOperations(setup))
 }
 
 func TestOfficialImplementationAcceptance(t *testing.T) {

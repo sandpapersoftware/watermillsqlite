@@ -15,7 +15,7 @@ import (
 type subscription struct {
 	db                     *sql.DB
 	pollTicker             *time.Ticker
-	lockTicker             *time.Ticker
+	lockDuration           time.Duration
 	ackChannel             func() <-chan time.Time
 	sqlLockConsumerGroup   string
 	sqlExtendLock          string
@@ -106,24 +106,29 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		msg.Metadata = next.Metadata
 		msg.SetContext(ctx) // required for passing official PubSub test tests.TestMessageCtx
 
+		// s.lockTicker.Reset(d time.Duration)
 		select { // wait for message emission
 		case <-ctx.Done():
 			return nil
-		// TODO: lock should also be extended here if GracePeriod is running out
+		case <-time.After(s.lockDuration):
+			return ErrDestinationChannelIsBusy
 		case s.destination <- msg:
-			// panic("sent")
 		}
 
-		// waitForMessageAcknowledgement:
+	waitForMessageAcknowledgement:
 		select {
 		case <-ctx.Done():
 			msg.Nack()
 			return nil
-		// case <-s.lockTicker.C:
-		// 	if err := s.ExtendLock(); err != nil {
-		// 		return err
-		// 	}
-		// 	goto waitForMessageAcknowledgement
+		// TODO: attemped to write a test for this condition
+		// it catches double locking even on short time out
+		// make sure hungLongAck test behaves properly
+		case <-time.After(s.lockDuration):
+			// panic("extend lock")
+			if err := s.ExtendLock(); err != nil {
+				return err
+			}
+			goto waitForMessageAcknowledgement
 		case <-msg.Acked():
 			s.lastAckedOffset = next.Offset
 			return nil
@@ -139,7 +144,6 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 }
 
 func (s *subscription) Loop(ctx context.Context) {
-	// TODO: defer close?
 	var (
 		batch []rawMessage
 		err   error
@@ -162,6 +166,14 @@ loop:
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil {
 				s.logger.Error("failed to process queued message", err, nil)
+				if _, err = s.db.Exec(
+					s.sqlAcknowledgeMessages,
+					s.lastAckedOffset,
+					s.lockedOffset,
+				); err != nil {
+					s.logger.Error("failed to acknowledge processed messages", err, nil)
+				}
+				<-time.After(time.Second * 5) // let another subscriber work
 				continue loop
 			}
 		}

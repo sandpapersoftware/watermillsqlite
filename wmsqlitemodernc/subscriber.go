@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	ErrClosed = errors.New("subscriber is closed")
+	ErrClosed                   = errors.New("subscriber is closed")
+	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
 )
 
 type SubscriberConfiguration struct {
@@ -146,9 +147,9 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	sub := &subscription{
 		db:                   db,
 		pollTicker:           time.NewTicker(time.Millisecond * 20),
-		lockTicker:           time.NewTicker(time.Second * time.Duration(graceSeconds-1)),
+		lockDuration:         time.Second * time.Duration(graceSeconds-1),
 		ackChannel:           s.ackChannel,
-		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING COALESCE(offset_acked, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
+		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.consumerGroup),
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT "offset", uuid, payload, metadata
