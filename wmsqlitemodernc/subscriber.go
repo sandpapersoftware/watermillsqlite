@@ -5,16 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
-)
-
-var (
-	ErrSubscriberIsClosed = errors.New("subscriber is closed")
 )
 
 // SubscriberOptions defines options for creating a subscriber. Every selection has a reasonable default value.
@@ -139,9 +136,10 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 }
 
 // Subscribe streams messages from the topic. Satisfies [watermill.Subscriber] interface.
+// Returns [io.ErrPipeClosed] if the subscriber is closed.
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
 	if s.IsClosed() {
-		return nil, ErrSubscriberIsClosed
+		return nil, io.ErrClosedPipe
 	}
 
 	messagesTableName := s.TopicTableNameGenerator(topic)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -27,8 +28,8 @@ type PublisherOptions struct {
 
 	// InitializeSchema enables initialization of schema database during publish.
 	// Schema is initialized once per topic per publisher instance.
-	// InitializeSchema is forbidden if using an ongoing transaction as database handle;
-	// That could result in an implicit commit of the transaction by a CREATE TABLE statement.
+	// InitializeSchema is forbidden if using an ongoing transaction as database handle.
+	// It could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	InitializeSchema bool
 
 	// Logger reports message publishing errors and traces. Defaults value is [watermill.NewSlogLogger].
@@ -37,6 +38,7 @@ type PublisherOptions struct {
 
 type publisher struct {
 	Context                   context.Context
+	ContextCancel             context.CancelCauseFunc
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
 	UUID                      string
@@ -60,8 +62,10 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 
 	ID := uuid.New().String()
 	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
+	ctx, cancel := context.WithCancelCause(cmp.Or(options.ParentContext, context.Background()))
 	return &publisher{
-		Context:                   cmp.Or(options.ParentContext, context.Background()),
+		Context:                   ctx,
+		ContextCancel:             cancel,
 		UUID:                      ID,
 		DB:                        db,
 		TopicTableNameGenerator:   tng.Topic,
@@ -77,7 +81,11 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 	}, nil
 }
 
+// Publish pushes messages into a topic. Returns [io.ErrClosedPipe] if the publisher is closed.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
+	if p.IsClosed() {
+		return io.ErrClosedPipe
+	}
 	if len(messages) == 0 {
 		return nil
 	}
@@ -123,7 +131,19 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	return err
 }
 
+func (p *publisher) IsClosed() bool {
+	select {
+	case <-p.Context.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *publisher) Close() error {
+	if !p.IsClosed() {
+		p.ContextCancel(io.ErrClosedPipe)
+	}
 	return nil
 }
 
