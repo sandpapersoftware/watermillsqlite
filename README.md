@@ -1,12 +1,17 @@
 # Watermill SQLite3 Driver Pack
 
-Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy message Publisher and Subscriber interfaces.
+Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy the following interfaces:
 
-## ModernC Usage
+- message.Publisher
+- message.Subscriber
+
+## ModernC
 
 ```sh
 go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
 ```
+
+ModernC driver is compatible with the Golang standard library SQL package. It works without CGO.
 
 ```go
 import (
@@ -35,6 +40,39 @@ if err != nil {
 // ... follow guides on <https://watermill.io>
 ```
 
+## ZombieZen
+
+```sh
+go get -u github.com/dkotik/watermillsqlite/wmsqlitezombiezen
+```
+
+ZombieZen driver abandons the standard Golang library SQL conventions in favor of more orthogonal API and performance. Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. It is faster than even the CGO variants.
+
+```go
+import (
+	"database/sql"
+	"github.com/dkotik/watermillsqlite/wmsqlitezombiezen"
+	_ "modernc.org/sqlite"
+)
+
+connectionDSN := ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
+conn, err := sqlite.OpenConn(connectionDSN)
+if err != nil {
+	panic(err)
+}
+defer conn.Close()
+
+pub, err := wmsqlitezombiezen.NewPublisher(conn, wmsqlitezombiezen.PublisherOptions{})
+if err != nil {
+	panic(err)
+}
+sub, err := wmsqlitezombiezen.NewSubscriber(connectionDSN, wmsqlitezombiezen.SubscriberOptions{})
+if err != nil {
+	panic(err)
+}
+// ... follow guides on <https://watermill.io>
+```
+
 ## Development: Alpha Version
 
 SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations.
@@ -45,23 +83,38 @@ Current architectural decision is to lock a consumer group offset using `unixepo
 - [x] Finish time-based lock extension when:
     - [x] sending a message to output channel
     - [x] waiting for message acknowledgement
-- [ ] Subscriber batch size of 100 fails to pass tests: investigate.
 - [ ] Add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Pass official implementation acceptance tests:
-    - [x] tests.TestPublishSubscribe
-    - [x] tests.TestConcurrentSubscribe
-    - [x] tests.TestConcurrentSubscribeMultipleTopics
-    - [x] tests.TestResendOnError
-    - [x] tests.TestNoAck
-    - [x] tests.TestContinueAfterSubscribeClose
-    - [x] tests.TestConcurrentClose
-    - [x] tests.TestContinueAfterErrors
-    - [x] tests.TestPublishSubscribeInOrder
-    - [x] tests.TestPublisherClose
-    - [x] tests.TestTopic
-    - [x] tests.TestMessageCtx
-    - [x] tests.TestSubscribeCtx
-    - [x] tests.TestConsumerGroups
+    - [x] ModernC
+        - [x] tests.TestPublishSubscribe
+        - [x] tests.TestConcurrentSubscribe
+        - [x] tests.TestConcurrentSubscribeMultipleTopics
+        - [x] tests.TestResendOnError
+        - [x] tests.TestNoAck
+        - [x] tests.TestContinueAfterSubscribeClose
+        - [x] tests.TestConcurrentClose
+        - [x] tests.TestContinueAfterErrors
+        - [x] tests.TestPublishSubscribeInOrder
+        - [x] tests.TestPublisherClose
+        - [x] tests.TestTopic
+        - [x] tests.TestMessageCtx
+        - [x] tests.TestSubscribeCtx
+        - [x] tests.TestConsumerGroups
+    - [ ] ZombieZen (passes simple tests)
+        - [ ] tests.TestPublishSubscribe
+        - [ ] tests.TestConcurrentSubscribe
+        - [ ] tests.TestConcurrentSubscribeMultipleTopics
+        - [ ] tests.TestResendOnError
+        - [ ] tests.TestNoAck
+        - [ ] tests.TestContinueAfterSubscribeClose
+        - [ ] tests.TestConcurrentClose
+        - [ ] tests.TestContinueAfterErrors
+        - [ ] tests.TestPublishSubscribeInOrder
+        - [ ] tests.TestPublisherClose
+        - [ ] tests.TestTopic
+        - [ ] tests.TestMessageCtx
+        - [ ] tests.TestSubscribeCtx
+        - [ ] tests.TestConsumerGroups
 
 ## Similar Projects
 
