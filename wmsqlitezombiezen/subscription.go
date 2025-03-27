@@ -97,7 +97,7 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 	return batch, nil
 }
 
-func (s *subscription) ExtendLock(ctx context.Context) (err error) {
+func (s *subscription) ExtendLock() (err error) {
 	if err = s.stmtExtendLock.Reset(); err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func (s *subscription) ExtendLock(ctx context.Context) (err error) {
 	return nil
 }
 
-func (s *subscription) ReleaseLock(ctx context.Context) (err error) {
+func (s *subscription) ReleaseLock() (err error) {
 	if err = s.stmtAcknowledgeMessages.Reset(); err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-ctx.Done():
 			return nil
 		case <-s.lockTicker.C:
-			return s.ReleaseLock(ctx)
+			return s.ReleaseLock()
 		case s.destination <- msg:
 		}
 
@@ -148,7 +148,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		// it catches double locking even on short time out
 		// make sure hungLongAck test behaves properly
 		case <-s.lockTicker.C:
-			if err := s.ExtendLock(ctx); err != nil {
+			if err := s.ExtendLock(); err != nil {
 				return err
 			}
 			goto waitForMessageAcknowledgement
@@ -158,7 +158,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-s.ackChannel():
 			s.logger.Debug("message took too long to be acknowledged", nil)
 			msg.Nack()
-			if err := s.ExtendLock(ctx); err != nil {
+			if err := s.ExtendLock(); err != nil {
 				return err
 			}
 		case <-msg.Nacked():
@@ -181,6 +181,7 @@ func (s *subscription) Run(ctx context.Context) {
 				s.stmtExtendLock.Finalize(),
 				s.stmtNextMessageBatch.Finalize(),
 				s.stmtAcknowledgeMessages.Finalize(),
+				s.Connection.Close(),
 			); err != nil {
 				s.logger.Error("subscription ended with error", err, nil)
 			}
@@ -206,7 +207,7 @@ func (s *subscription) Run(ctx context.Context) {
 			}
 		}
 
-		if err = s.ReleaseLock(ctx); err != nil {
+		if err = s.ReleaseLock(); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				s.logger.Error("failed to acknowledge processed messages", err, nil)
 			}

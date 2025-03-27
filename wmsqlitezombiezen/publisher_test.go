@@ -8,7 +8,7 @@ import (
 )
 
 func TestPublisher(t *testing.T) {
-	conn := newTestConnection(t)
+	conn := newTestConnection(t, ":memory:")
 	pub, err := NewPublisher(conn, PublisherOptions{})
 	if err != nil {
 		t.Fatal(err)

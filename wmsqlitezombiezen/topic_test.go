@@ -8,7 +8,7 @@ import (
 )
 
 func TestTopicTableCreation(t *testing.T) {
-	conn := newTestConnection(t)
+	conn := newTestConnection(t, ":memory:")
 
 	err := createTopicAndOffsetsTablesIfAbsent(
 		conn,
