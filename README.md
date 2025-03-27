@@ -2,17 +2,50 @@
 
 Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy message Publisher and Subscriber interfaces.
 
+## ModernC Usage
+
+```sh
+$ go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
+```
+
+```go
+import (
+	"database/sql"
+	"github.com/dkotik/watermillsqlite/wmsqlitemodernc"
+	_ "modernc.org/sqlite"
+)
+
+db, err := sql.Open("sqlite", ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
+if err != nil {
+	panic(err)
+}
+// limit the number of concurrent connections to one
+// this is a limitation of `modernc.org/sqlite` driver
+db.SetMaxOpenConns(1)
+defer db.Close()
+
+pub, err := wmsqlitemodernc.NewPublisher(db, wmsqlitemodernc.PublisherOptions{})
+if err != nil {
+	panic(err)
+}
+sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{})
+if err != nil {
+	panic(err)
+}
+// ... follow guides on <https://watermill.io>
+```
+
 ## Development: Alpha Version
 
 SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations.
 
-Current architectural decision is to lock a consumer group offset using `unixepoch()+graceTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `graceTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over lock as soon as the grace period runs out.
+Current architectural decision is to lock a consumer group offset using `unixepoch()+graceTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `graceTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out.
 
-- [ ] Finish time-based lock extension when:
-    - [ ] sending a message to output channel
-    - [ ] waiting for message acknowledgement
+- [x] Finish time-based lock extension when:
+    - [x] sending a message to output channel
+    - [x] waiting for message acknowledgement
 - [ ] Subscriber batch size of 100 fails to pass tests: investigate.
-- [ ] add `NewDeduplicator` constructor for deduplication middleware.
+- [ ] Add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Pass official implementation acceptance tests:
     - [x] tests.TestPublishSubscribe
     - [x] tests.TestConcurrentSubscribe

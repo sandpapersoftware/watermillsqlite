@@ -1,18 +1,23 @@
 package wmsqlitemodernc
 
 import (
+	"database/sql"
 	"testing"
 )
 
 func TestTopicTableCreation(t *testing.T) {
-	db := NewGlobalInMemoryEphemeralConnector(t.Context())
+	db, err := sql.Open("sqlite", ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
 	})
 
-	err := createTopicAndOffsetsTablesIfAbsent(
+	err = createTopicAndOffsetsTablesIfAbsent(
 		t.Context(),
 		db,
 		"messagesTableName",

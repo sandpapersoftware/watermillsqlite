@@ -3,35 +3,17 @@ package wmsqlitemodernc
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	_ "modernc.org/sqlite"
 )
 
+// SQLiteDatabase is an interface that represents a SQLite database connection or a transaction.
 type SQLiteDatabase interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Close() error
-}
-
-// return New("file:memory:?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared", poolSize)
-// &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
-
-func NewGlobalInMemoryEphemeralConnector(ctx context.Context) SQLiteDatabase {
-	db, err := sql.Open("sqlite", "file:memory:?mode=memory&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared&_txlock=exclusive")
-	// db, err := sql.Open("sqlite", ":memory:")
-	db.SetMaxOpenConns(1)
-	if err != nil {
-		panic(fmt.Errorf("unable to create RAM emphemeral database connection: %w", err))
-	}
-	go func(ctx context.Context) {
-		<-ctx.Done()
-		db.Close()
-	}(ctx)
-
-	return db
 }
 
 // TableNameGenerator creates a table name for a given topic either for

@@ -15,7 +15,6 @@ import (
 
 var (
 	ErrSubscriberClosed         = errors.New("subscriber is closed")
-	ErrConsumerGroupIsLocked    = errors.New("consumer group is locked")
 	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
 )
 

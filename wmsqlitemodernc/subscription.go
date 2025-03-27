@@ -46,13 +46,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 		return nil, err
 	}
 	defer func() {
-		switch err {
-		case nil:
-			err = tx.Commit()
-		case ErrConsumerGroupIsLocked:
-			// ignore error because operation failed to acquire row lock
-			err = tx.Rollback()
-		default:
+		if err != nil {
 			err = errors.Join(err, tx.Rollback())
 		}
 	}()
@@ -63,7 +57,7 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	}
 	if err = lock.Scan(&s.lockedOffset); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrConsumerGroupIsLocked
+			return nil, tx.Rollback()
 		}
 		return nil, fmt.Errorf("unable to scan offset_acked value: %w", err)
 	}
@@ -73,25 +67,25 @@ func (s *subscription) nextBatch(ctx context.Context) (
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		err = errors.Join(rows.Close())
+	}()
 
 	rawMetadata := []byte{}
 	for rows.Next() {
 		next := rawMessage{}
 		if err = rows.Scan(&next.Offset, &next.UUID, &next.Payload, &rawMetadata); err != nil {
-			return nil, errors.Join(err, rows.Close())
+			return nil, rows.Close()
 		}
 		if err = json.Unmarshal(rawMetadata, &next.Metadata); err != nil {
-			return nil, errors.Join(
-				fmt.Errorf("unable to parse metadata JSON: %w", err),
-				rows.Close(),
-			)
+			return nil, fmt.Errorf("unable to parse metadata JSON: %w", err)
 		}
 		batch = append(batch, next)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.Join(err, rows.Close())
+		return nil, rows.Close()
 	}
-	return batch, rows.Close()
+	return batch, tx.Commit()
 }
 
 func (s *subscription) ExtendLock(ctx context.Context) error {
@@ -165,22 +159,22 @@ loop:
 		}
 
 		batch, err = s.nextBatch(ctx)
-		if err != nil {
+		if err != nil && err != context.Canceled {
 			s.logger.Error("next message batch query failed", err, nil)
 			continue loop
 		}
 
 		for _, next := range batch {
-			if err = s.Send(ctx, next); err != nil {
+			if err = s.Send(ctx, next); err != nil && err != context.Canceled {
 				s.logger.Error("failed to process queued message", err, nil)
-				if _, err = s.DB.ExecContext(
-					ctx,
-					s.sqlAcknowledgeMessages,
-					s.lastAckedOffset,
-					s.lockedOffset,
-				); err != nil {
-					s.logger.Error("failed to acknowledge processed messages", err, nil)
-				}
+				// if _, err = s.DB.ExecContext(
+				// 	ctx,
+				// 	s.sqlAcknowledgeMessages,
+				// 	s.lastAckedOffset,
+				// 	s.lockedOffset,
+				// ); err != nil {
+				// 	s.logger.Error("failed to acknowledge processed messages", err, nil)
+				// }
 				<-time.After(time.Second * 5) // let another subscriber work
 				continue loop
 			}
@@ -191,7 +185,7 @@ loop:
 			s.sqlAcknowledgeMessages,
 			s.lastAckedOffset,
 			s.lockedOffset,
-		); err != nil {
+		); err != nil && err != context.Canceled {
 			s.logger.Error("failed to acknowledge processed messages", err, nil)
 		}
 	}
