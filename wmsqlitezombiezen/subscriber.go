@@ -1,6 +1,7 @@
 package wmsqlitezombiezen
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -16,6 +17,12 @@ import (
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
+
+var defaultBufferPool = &sync.Pool{
+	New: func() any {
+		return &bytes.Buffer{}
+	},
+}
 
 // SubscriberOptions defines options for creating a subscriber. Every selection has a reasonable default value.
 type SubscriberOptions struct {
@@ -48,6 +55,11 @@ type SubscriberOptions struct {
 	// Must be non-negative. Default value is 30 seconds.
 	AckDeadline *time.Duration
 
+	// BufferPool is a pool of buffers used for reading message payload and metadata from the database.
+	// If not provided, a default pool will be used. The pool may leak message metadata, but never the payload.
+	// Warning: If sync.Pool does not return a buffer, subscription will panic.
+	BufferPool *sync.Pool
+
 	// InitializeSchema option enables initializing schema on making a subscription.
 	InitializeSchema bool
 
@@ -66,6 +78,7 @@ type subscriber struct {
 	Closed                    chan struct{}
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
+	BufferPool                *sync.Pool
 	Logger                    watermill.LoggerAdapter
 	Subscriptions             *sync.WaitGroup
 }
@@ -130,6 +143,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 		Closed:                    make(chan struct{}),
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
+		BufferPool:                cmp.Or(options.BufferPool, defaultBufferPool),
 		Logger: cmp.Or[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),
@@ -218,6 +232,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		stmtNextMessageBatch:    stmtNextMessageBatch,
 		stmtAcknowledgeMessages: stmtAcknowledgeMessages,
 		destination:             make(chan *message.Message),
+		bufferPool:              s.BufferPool,
 		logger: s.Logger.With(
 			watermill.LogFields{
 				"topic": topic,

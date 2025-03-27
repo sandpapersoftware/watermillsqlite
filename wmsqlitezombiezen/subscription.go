@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -32,6 +33,7 @@ type subscription struct {
 	lockedOffset    int64
 	lastAckedOffset int64
 	destination     chan *message.Message
+	bufferPool      *sync.Pool
 	logger          watermill.LoggerAdapter
 }
 
@@ -49,9 +51,9 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 	}
 	defer closeTransaction(&err)
 
-	defer func() {
-		err = errors.Join(err, s.stmtLockConsumerGroup.Reset())
-	}()
+	if err = s.stmtLockConsumerGroup.Reset(); err != nil {
+		return nil, err
+	}
 	ok, err := s.stmtLockConsumerGroup.Step()
 	if err != nil {
 		return nil, fmt.Errorf("unable to read offset_acked value: %w", err)
@@ -69,10 +71,12 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		return nil, errors.New("lock query returned more than one row")
 	}
 
-	defer func() {
-		err = errors.Join(err, s.stmtNextMessageBatch.Reset())
-	}()
+	if err = s.stmtNextMessageBatch.Reset(); err != nil {
+		return nil, err
+	}
 	s.stmtNextMessageBatch.BindInt64(1, s.lockedOffset)
+	b := s.bufferPool.Get().(*bytes.Buffer)
+	defer s.bufferPool.Put(b)
 	for {
 		ok, err = s.stmtNextMessageBatch.Step()
 		if err != nil {
@@ -81,13 +85,11 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		if !ok {
 			break
 		}
-		// fmt.Println("offset", s.stmtNextMessageBatch.ColumnText(1))
 		next := rawMessage{
 			Offset: s.stmtNextMessageBatch.ColumnInt64(0),
 			UUID:   s.stmtNextMessageBatch.ColumnText(1),
 		}
-		b := &bytes.Buffer{} // TODO: use buffer pool as a subscriber option
-		b.Reset()            // might be full from pool; note that pool may leak message metadata
+		b.Reset() // might be full from pool; note that pool may leak message metadata
 		if _, err = io.Copy(b, s.stmtNextMessageBatch.ColumnReader(2)); err != nil {
 			return nil, fmt.Errorf("unable to read message payload: %w", err)
 		}
@@ -107,13 +109,25 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 }
 
 func (s *subscription) ExtendLock() (err error) {
-	defer func() {
-		err = errors.Join(err, s.stmtExtendLock.Reset())
-	}()
+	if err = s.stmtExtendLock.Reset(); err != nil {
+		return err
+	}
 	s.stmtExtendLock.BindInt64(1, s.lastAckedOffset)
 	s.stmtExtendLock.BindInt64(2, s.lockedOffset)
-	if _, err = s.stmtExtendLock.Step(); err != nil {
+
+	ok, err := s.stmtExtendLock.Step()
+	if err != nil {
 		return err
+	}
+	if !ok {
+		return errors.New("lock extension did not return any rows")
+	}
+	ok, err = s.stmtExtendLock.Step()
+	if err != nil {
+		return err
+	}
+	if ok {
+		return errors.New("lock extension returned more than one row")
 	}
 	s.lockTicker.Reset(s.lockDuration)
 	s.lockedOffset = s.lastAckedOffset
@@ -121,20 +135,20 @@ func (s *subscription) ExtendLock() (err error) {
 }
 
 func (s *subscription) ReleaseLock() (err error) {
-	defer func() {
-		err = errors.Join(err, s.stmtAcknowledgeMessages.Reset())
-	}()
+	if err = s.stmtAcknowledgeMessages.Reset(); err != nil {
+		return err
+	}
 	s.stmtAcknowledgeMessages.BindInt64(1, s.lastAckedOffset)
 	s.stmtAcknowledgeMessages.BindInt64(2, s.lockedOffset)
-	var ok bool
-	for {
-		if ok, err = s.stmtAcknowledgeMessages.Step(); err != nil {
-			return err
-		}
-		if !ok {
-			return nil
-		}
+
+	ok, err := s.stmtAcknowledgeMessages.Step()
+	if err != nil {
+		return err
 	}
+	if ok {
+		return errors.New("acknowledgement returned a result")
+	}
+	return nil
 }
 
 func (s *subscription) Send(parent context.Context, next rawMessage) error {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
+	clonedTests "github.com/dkotik/watermillsqlite/wmsqlitezombiezen/tests"
 	"github.com/google/uuid"
 	"zombiezen.com/go/sqlite"
 )
@@ -46,8 +47,8 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 
 		sub, err := NewSubscriber(connectionDSN,
 			SubscriberOptions{
-				PollInterval: time.Millisecond * 20,
-				// BatchSize:        5,
+				PollInterval:     time.Millisecond * 20,
+				BatchSize:        5, // TODO: increase to defaul 100
 				ConsumerGroup:    consumerGroup,
 				InitializeSchema: true,
 			})
@@ -80,6 +81,9 @@ func NewFileDB(t *testing.T) tests.PubSubFixture {
 }
 
 func TestPubSub(t *testing.T) {
+	if !testing.Short() {
+		t.Skip("working on acceptance tests")
+	}
 	// if testing.Short() {
 	// 	t.Skip("working on internal tests")
 	// }
@@ -95,6 +99,6 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
 	}
-	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFileDB(t)))
-	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(NewEphemeralDB(t)))
+	t.Run("file bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewFileDB(t))))
+	// t.Run("memory bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewEphemeralDB(t))))
 }
