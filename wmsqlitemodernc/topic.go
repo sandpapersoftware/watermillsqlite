@@ -24,19 +24,6 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db SQLiteDatabase,
 	if err = validateTopicName(messagesTableName); err != nil {
 		return err
 	}
-	// TODO: TABLE CREATION appears to be an operation forbidden for transactions
-	// when a transaction is used, acceptance tests begin to fail
-	//
-	// tx, err := db.BeginTx(ctx, nil)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer func() {
-	// 	if err != nil {
-	// 		err = errors.Join(err, tx.Rollback())
-	// 	}
-	// }()
-
 	// adding UNIQUE(uuid) constraint slows the driver down without benefit
 	_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS '`+messagesTableName+`' (
 		'offset' INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +44,5 @@ func createTopicAndOffsetsTablesIfAbsent(ctx context.Context, db SQLiteDatabase,
 	if err != nil {
 		return err
 	}
-	// return tx.Commit()
 	return err
 }

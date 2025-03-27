@@ -134,6 +134,9 @@ func hungNackTest(pub message.Publisher, sub message.Subscriber) func(t *testing
 
 		select {
 		case msg := <-msgs:
+			if msg == nil {
+				t.Fatal("message is nil")
+			}
 			if !bytes.Equal(msg.Payload, original.Payload) {
 				t.Errorf("expected payload %q, got %q", original.Payload, msg.Payload)
 			}
@@ -145,6 +148,9 @@ func hungNackTest(pub message.Publisher, sub message.Subscriber) func(t *testing
 
 		select {
 		case msg := <-msgs:
+			if msg == nil {
+				t.Fatal("message is nil")
+			}
 			if msg.UUID != original.UUID {
 				t.Errorf("expected payload %q, got %q", original.UUID, msg.UUID)
 			}

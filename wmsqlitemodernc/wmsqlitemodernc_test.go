@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc"
@@ -17,8 +18,8 @@ func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 		pub, err := wmsqlitemodernc.NewPublisher(
 			db,
 			wmsqlitemodernc.PublisherOptions{
-				ParentContext:        t.Context(),
-				AutoInitializeSchema: true,
+				ParentContext:    t.Context(),
+				InitializeSchema: true,
 			})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
@@ -30,7 +31,9 @@ func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 		})
 
 		sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{
-			ConsumerGroup: consumerGroup,
+			PollInterval:     time.Millisecond * 20,
+			ConsumerGroup:    consumerGroup,
+			InitializeSchema: true,
 		})
 		if err != nil {
 			t.Fatal("unable to initialize publisher:", err)
