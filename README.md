@@ -5,7 +5,7 @@ Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy messa
 ## ModernC Usage
 
 ```sh
-$ go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
+go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
 ```
 
 ```go
@@ -41,6 +41,7 @@ SQLite3 does not support querying `FOR UPDATE`, which is used for row locking wh
 
 Current architectural decision is to lock a consumer group offset using `unixepoch()+graceTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `graceTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out.
 
+- [ ] ModernC version repeated tests flake out usually when running with -count=5, but for a single run they pass.
 - [x] Finish time-based lock extension when:
     - [x] sending a message to output channel
     - [x] waiting for message acknowledgement
