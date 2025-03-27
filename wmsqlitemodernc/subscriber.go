@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	ErrSubscriberClosed         = errors.New("subscriber is closed")
-	ErrDestinationChannelIsBusy = errors.New("destination channel is busy")
+	ErrSubscriberIsClosed = errors.New("subscriber is closed")
 )
 
 type SubscriberOptions struct {
@@ -117,10 +116,8 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 }
 
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
-	select {
-	case <-s.closed:
-		return nil, ErrSubscriberClosed
-	default:
+	if s.IsClosed() {
+		return nil, ErrSubscriberIsClosed
 	}
 
 	messagesTableName := s.TopicTableNameGenerator(topic)
@@ -187,10 +184,17 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	return sub.destination, nil
 }
 
-func (s *subscriber) Close() error {
+func (s *subscriber) IsClosed() bool {
 	select {
 	case <-s.closed:
+		return true
 	default:
+		return false
+	}
+}
+
+func (s *subscriber) Close() error {
+	if !s.IsClosed() {
 		close(s.closed)
 		s.subscribeWg.Wait()
 	}

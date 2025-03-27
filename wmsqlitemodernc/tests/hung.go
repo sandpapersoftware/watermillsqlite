@@ -58,7 +58,7 @@ func hungDestinationChannel(pub message.Publisher, sub message.Subscriber) func(
 		default:
 		}
 
-		if msg != nil {
+		if msg != nil && msg.UUID == "first" {
 			t.Fatal("the same message was delivered twice", msg.UUID)
 		}
 	}

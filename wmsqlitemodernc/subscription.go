@@ -99,6 +99,16 @@ func (s *subscription) ExtendLock(ctx context.Context) error {
 	return nil
 }
 
+func (s *subscription) ReleaseLock(ctx context.Context) (err error) {
+	_, err = s.DB.ExecContext(
+		ctx,
+		s.sqlAcknowledgeMessages,
+		s.lastAckedOffset,
+		s.lockedOffset,
+	)
+	return err
+}
+
 func (s *subscription) Send(parent context.Context, next rawMessage) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -113,7 +123,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-ctx.Done():
 			return nil
 		case <-s.lockTicker.C:
-			return ErrDestinationChannelIsBusy
+			return s.ReleaseLock(ctx)
 		case s.destination <- msg:
 		}
 
@@ -167,25 +177,11 @@ loop:
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil && err != context.Canceled {
 				s.logger.Error("failed to process queued message", err, nil)
-				// if _, err = s.DB.ExecContext(
-				// 	ctx,
-				// 	s.sqlAcknowledgeMessages,
-				// 	s.lastAckedOffset,
-				// 	s.lockedOffset,
-				// ); err != nil {
-				// 	s.logger.Error("failed to acknowledge processed messages", err, nil)
-				// }
-				<-time.After(time.Second * 5) // let another subscriber work
 				continue loop
 			}
 		}
 
-		if _, err = s.DB.ExecContext(
-			ctx,
-			s.sqlAcknowledgeMessages,
-			s.lastAckedOffset,
-			s.lockedOffset,
-		); err != nil && err != context.Canceled {
+		if err = s.ReleaseLock(ctx); err != nil && err != context.Canceled {
 			s.logger.Error("failed to acknowledge processed messages", err, nil)
 		}
 	}
