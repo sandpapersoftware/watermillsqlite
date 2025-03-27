@@ -8,6 +8,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
+	"github.com/google/uuid"
 	"zombiezen.com/go/sqlite"
 )
 
@@ -45,7 +46,8 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 
 		sub, err := NewSubscriber(connectionDSN,
 			SubscriberOptions{
-				PollInterval:     time.Millisecond * 20,
+				PollInterval: time.Millisecond * 20,
+				// BatchSize:        5,
 				ConsumerGroup:    consumerGroup,
 				InitializeSchema: true,
 			})
@@ -63,11 +65,11 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 }
 
 func NewEphemeralDB(t *testing.T) tests.PubSubFixture {
-	return NewPubSubFixture("file:" + t.Name() + "?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
+	return NewPubSubFixture("file:" + uuid.New().String() + "?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
 }
 
-func NewFilelDB(t *testing.T) tests.PubSubFixture {
-	file := filepath.Join(t.TempDir(), "db.sqlite3")
+func NewFileDB(t *testing.T) tests.PubSubFixture {
+	file := filepath.Join(t.TempDir(), uuid.New().String()+".sqlite3")
 	t.Cleanup(func() {
 		if err := os.Remove(file); err != nil {
 			t.Fatal("unable to remove test SQLite database file", err)
@@ -78,17 +80,21 @@ func NewFilelDB(t *testing.T) tests.PubSubFixture {
 }
 
 func TestPubSub(t *testing.T) {
-	inMemory := NewEphemeralDB(t)
+	// if testing.Short() {
+	// 	t.Skip("working on internal tests")
+	// }
+	// fixture := NewFileDB(t)
+	fixture := NewEphemeralDB(t)
 
-	t.Run("basic functionality", tests.TestBasicSendRecieve(inMemory))
-	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(inMemory, 1000))
-	t.Run("perpetual locks", tests.TestHungOperations(inMemory))
+	t.Run("basic functionality", tests.TestBasicSendRecieve(fixture))
+	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(fixture, 1000))
+	t.Run("perpetual locks", tests.TestHungOperations(fixture))
 }
 
 func TestOfficialImplementationAcceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
 	}
-	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFilelDB(t)))
+	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFileDB(t)))
 	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(NewEphemeralDB(t)))
 }

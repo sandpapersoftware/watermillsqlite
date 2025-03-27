@@ -49,9 +49,9 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 	}
 	defer closeTransaction(&err)
 
-	if err = s.stmtLockConsumerGroup.Reset(); err != nil {
-		return nil, err
-	}
+	defer func() {
+		err = errors.Join(err, s.stmtLockConsumerGroup.Reset())
+	}()
 	ok, err := s.stmtLockConsumerGroup.Step()
 	if err != nil {
 		return nil, fmt.Errorf("unable to read offset_acked value: %w", err)
@@ -61,10 +61,18 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 	}
 	s.lockedOffset = s.stmtLockConsumerGroup.ColumnInt64(0)
 	s.lastAckedOffset = s.lockedOffset
-
-	if err = s.stmtNextMessageBatch.Reset(); err != nil {
-		return nil, err
+	ok, err = s.stmtLockConsumerGroup.Step()
+	if err != nil {
+		return nil, fmt.Errorf("unable to finish reading offset_acked value: %w", err)
 	}
+	if ok {
+		return nil, errors.New("lock query returned more than one row")
+	}
+
+	defer func() {
+		err = errors.Join(err, s.stmtNextMessageBatch.Reset())
+	}()
+	s.stmtNextMessageBatch.BindInt64(1, s.lockedOffset)
 	for {
 		ok, err = s.stmtNextMessageBatch.Step()
 		if err != nil {
@@ -73,7 +81,7 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		if !ok {
 			break
 		}
-		fmt.Println(s.stmtNextMessageBatch.ColumnText(0))
+		// fmt.Println("offset", s.stmtNextMessageBatch.ColumnText(1))
 		next := rawMessage{
 			Offset: s.stmtNextMessageBatch.ColumnInt64(0),
 			UUID:   s.stmtNextMessageBatch.ColumnText(1),
@@ -94,16 +102,17 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		}
 		batch = append(batch, next)
 	}
+
 	return batch, nil
 }
 
 func (s *subscription) ExtendLock() (err error) {
-	if err = s.stmtExtendLock.Reset(); err != nil {
-		return err
-	}
-	s.stmtAcknowledgeMessages.BindInt64(1, s.lastAckedOffset)
-	s.stmtAcknowledgeMessages.BindInt64(2, s.lockedOffset)
-	if _, err = s.stmtAcknowledgeMessages.Step(); err != nil {
+	defer func() {
+		err = errors.Join(err, s.stmtExtendLock.Reset())
+	}()
+	s.stmtExtendLock.BindInt64(1, s.lastAckedOffset)
+	s.stmtExtendLock.BindInt64(2, s.lockedOffset)
+	if _, err = s.stmtExtendLock.Step(); err != nil {
 		return err
 	}
 	s.lockTicker.Reset(s.lockDuration)
@@ -112,13 +121,20 @@ func (s *subscription) ExtendLock() (err error) {
 }
 
 func (s *subscription) ReleaseLock() (err error) {
-	if err = s.stmtAcknowledgeMessages.Reset(); err != nil {
-		return err
-	}
+	defer func() {
+		err = errors.Join(err, s.stmtAcknowledgeMessages.Reset())
+	}()
 	s.stmtAcknowledgeMessages.BindInt64(1, s.lastAckedOffset)
 	s.stmtAcknowledgeMessages.BindInt64(2, s.lockedOffset)
-	_, err = s.stmtAcknowledgeMessages.Step()
-	return err
+	var ok bool
+	for {
+		if ok, err = s.stmtAcknowledgeMessages.Step(); err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+	}
 }
 
 func (s *subscription) Send(parent context.Context, next rawMessage) error {
@@ -182,7 +198,7 @@ func (s *subscription) Run(ctx context.Context) {
 				s.stmtNextMessageBatch.Finalize(),
 				s.stmtAcknowledgeMessages.Finalize(),
 				s.Connection.Close(),
-			); err != nil {
+			); err != nil && !errors.Is(err, context.Canceled) {
 				s.logger.Error("subscription ended with error", err, nil)
 			}
 			return

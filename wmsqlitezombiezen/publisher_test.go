@@ -5,6 +5,8 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	"zombiezen.com/go/sqlite"
+	"zombiezen.com/go/sqlite/sqlitex"
 )
 
 func TestPublisher(t *testing.T) {
@@ -26,4 +28,15 @@ func TestPublisher(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+
+	if err = sqlitex.ExecuteTransient(conn, "SELECT uuid FROM 'watermill_test-topic'", &sqlitex.ExecOptions{
+		ResultFunc: func(stmt *sqlite.Stmt) error {
+			t.Log("discovered message:", stmt.ColumnText(0))
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// t.Fatal("implement")
 }

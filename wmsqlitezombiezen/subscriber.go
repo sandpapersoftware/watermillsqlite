@@ -151,7 +151,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if err != nil {
 		return nil, err
 	}
-	conn.SetInterrupt(ctx.Done())
+	conn.SetInterrupt(ctx.Done()) // TODO: bind to context
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, conn.Close())
@@ -173,35 +173,35 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if err = sqlitex.ExecuteTransient(
 		conn,
 		fmt.Sprintf(`
-			INSERT INTO '%s' (consumer_group, offset_acked, locked_until)
-			VALUES ("%s", 0, 0)
-			ON CONFLICT(consumer_group) DO NOTHING;
-		`, offsetsTableName, s.ConsumerGroup),
+			INSERT INTO "%s" (consumer_group, offset_acked, locked_until)
+			VALUES ('%s', 0, 0)
+			ON CONFLICT(consumer_group) DO NOTHING;`,
+			offsetsTableName, s.ConsumerGroup),
 		nil,
 	); err != nil {
 		return nil, fmt.Errorf("failed zero-value insertion: %w", err)
 	}
 
 	graceSeconds := 5 // TODO: customize grace period
-	stmtLockConsumerGroup, err := conn.Prepare(fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`, offsetsTableName, graceSeconds, s.ConsumerGroup))
+	stmtLockConsumerGroup, err := conn.Prepare(fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group='%s' AND locked_until < unixepoch() RETURNING offset_acked;`, offsetsTableName, graceSeconds, s.ConsumerGroup))
 	if err != nil {
 		return nil, fmt.Errorf("invalid lock consumer group statement: %w", err)
 	}
-	stmtExtendLock, err := conn.Prepare(fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.ConsumerGroup))
+	stmtExtendLock, err := conn.Prepare(fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group='%s' AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0);`, offsetsTableName, graceSeconds, s.ConsumerGroup))
 	if err != nil {
 		return nil, fmt.Errorf("invalid extend lock statement: %w", err)
 	}
 	stmtNextMessageBatch, err := conn.Prepare(fmt.Sprintf(`
 		SELECT "offset", uuid, payload, metadata
 		FROM '%s'
-		WHERE "offset">? ORDER BY offset LIMIT %d;
-	`, messagesTableName, s.BatchSize))
+		WHERE "offset">? ORDER BY offset LIMIT %d;`,
+		messagesTableName, s.BatchSize))
 	if err != nil {
 		return nil, fmt.Errorf("invalid message batch query statement: %w", err)
 	}
 	stmtAcknowledgeMessages, err := conn.Prepare(fmt.Sprintf(`
-		UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group="%s" AND offset_acked = ?;
-	`, offsetsTableName, s.ConsumerGroup))
+		UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group='%s' AND offset_acked=?;`,
+		offsetsTableName, s.ConsumerGroup))
 	if err != nil {
 		return nil, fmt.Errorf("invalid acknowledge messages statement: %w", err)
 	}

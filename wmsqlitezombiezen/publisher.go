@@ -110,7 +110,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 
 	return sqlitex.ExecuteTransient(
 		p.Connection,
-		strings.TrimRight(query.String(), ","),
+		strings.TrimRight(query.String(), ",")+";",
 		&sqlitex.ExecOptions{
 			Args: arguments,
 		})
