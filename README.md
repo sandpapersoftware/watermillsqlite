@@ -2,10 +2,13 @@
 
 Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy the following interfaces:
 
-- message.Publisher
-- message.Subscriber
+- [message.Publisher](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Publisher)
+- [message.Subscriber](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Subscriber)
 
 ## ModernC
+[![Go Reference](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitemodernc)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
+[![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc)
 
 ```sh
 go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
@@ -41,12 +44,15 @@ if err != nil {
 ```
 
 ## ZombieZen
+[![Go Reference](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
+[![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen)
 
 ```sh
 go get -u github.com/dkotik/watermillsqlite/wmsqlitezombiezen
 ```
 
-ZombieZen driver abandons the standard Golang library SQL conventions in favor of more orthogonal API and performance. Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. It is faster than even the CGO variants.
+ZombieZen driver abandons the standard Golang library SQL conventions in favor of more orthogonal API and performance. Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. It is about **6 times faster** than the ModernC driver. And, it is currently more stable due to lower level control. It is faster than even the CGO SQLite variants.
 
 ```go
 import (
@@ -81,10 +87,13 @@ SQLite3 does not support querying `FOR UPDATE`, which is used for row locking wh
 Current architectural decision is to lock a consumer group offset using `unixepoch()+graceTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `graceTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out.
 
 - [ ] ModernC version repeated tests flake out usually when running with -count=5, but for a single run they pass.
+- [ ] Add clean up routines for removing old messages from topics.
+    - [ ] wmsqlitemodernc.CleanUpTopics
+    - [ ] wmsqlitezombiezen.CleanUpTopics
+- [ ] Add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Finish time-based lock extension when:
     - [x] sending a message to output channel
     - [x] waiting for message acknowledgement
-- [ ] Add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Pass official implementation acceptance tests:
     - [x] ModernC
         - [x] tests.TestPublishSubscribe
@@ -101,21 +110,21 @@ Current architectural decision is to lock a consumer group offset using `unixepo
         - [x] tests.TestMessageCtx
         - [x] tests.TestSubscribeCtx
         - [x] tests.TestConsumerGroups
-    - [ ] ZombieZen (passes simple tests)
-        - [ ] tests.TestPublishSubscribe
-        - [ ] tests.TestConcurrentSubscribe
-        - [ ] tests.TestConcurrentSubscribeMultipleTopics
-        - [ ] tests.TestResendOnError
-        - [ ] tests.TestNoAck
-        - [ ] tests.TestContinueAfterSubscribeClose
-        - [ ] tests.TestConcurrentClose
-        - [ ] tests.TestContinueAfterErrors
-        - [ ] tests.TestPublishSubscribeInOrder
-        - [ ] tests.TestPublisherClose
-        - [ ] tests.TestTopic
-        - [ ] tests.TestMessageCtx
-        - [ ] tests.TestSubscribeCtx
-        - [ ] tests.TestConsumerGroups
+    - [x] ZombieZen (passes simple tests)
+        - [x] tests.TestPublishSubscribe
+        - [x] tests.TestConcurrentSubscribe
+        - [x] tests.TestConcurrentSubscribeMultipleTopics
+        - [x] tests.TestResendOnError
+        - [x] tests.TestNoAck
+        - [x] tests.TestContinueAfterSubscribeClose
+        - [x] tests.TestConcurrentClose
+        - [x] tests.TestContinueAfterErrors
+        - [x] tests.TestPublishSubscribeInOrder
+        - [x] tests.TestPublisherClose
+        - [x] tests.TestTopic
+        - [x] tests.TestMessageCtx
+        - [x] tests.TestSubscribeCtx
+        - [x] tests.TestConsumerGroups
 
 ## Similar Projects
 

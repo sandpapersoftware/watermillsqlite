@@ -8,7 +8,6 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
-	clonedTests "github.com/dkotik/watermillsqlite/wmsqlitezombiezen/tests"
 	"github.com/google/uuid"
 	"zombiezen.com/go/sqlite"
 )
@@ -80,25 +79,27 @@ func NewFileDB(t *testing.T) tests.PubSubFixture {
 	return NewPubSubFixture("file:" + file + "?journal_mode=WAL&busy_timeout=5000&secure_delete=true&foreign_keys=true&cache=shared")
 }
 
-func TestPubSub(t *testing.T) {
-	if !testing.Short() {
-		t.Skip("working on acceptance tests")
-	}
+func TestFullConfirmityToModerncImplementation(t *testing.T) {
+	// if !testing.Short() {
+	// 	t.Skip("working on acceptance tests")
+	// }
 	// if testing.Short() {
 	// 	t.Skip("working on internal tests")
 	// }
-	// fixture := NewFileDB(t)
-	fixture := NewEphemeralDB(t)
 
-	t.Run("basic functionality", tests.TestBasicSendRecieve(fixture))
-	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(fixture, 1000))
-	t.Run("perpetual locks", tests.TestHungOperations(fixture))
-}
+	t.Run("importedTestsFromModernc", func(t *testing.T) {
+		// fixture := NewFileDB(t)
+		fixture := NewEphemeralDB(t)
+		t.Run("basic functionality", tests.TestBasicSendRecieve(fixture))
+		t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(fixture, 1000))
+		t.Run("perpetual locks", tests.TestHungOperations(fixture))
+	})
 
-func TestOfficialImplementationAcceptance(t *testing.T) {
-	if testing.Short() {
-		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
-	}
-	// t.Run("file bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewFileDB(t))))
-	t.Run("memory bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewEphemeralDB(t))))
+	t.Run("acceptanceTestsImportedFromModernc", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
+		}
+		t.Run("file bound transactions", tests.OfficialImplementationAcceptance(tests.PubSubFixture(NewFileDB(t))))
+		t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(tests.PubSubFixture(NewEphemeralDB(t))))
+	})
 }

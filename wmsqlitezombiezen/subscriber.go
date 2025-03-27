@@ -120,8 +120,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 		}
 		if deadline == 0 {
 			nackChannel = func() <-chan time.Time {
-				// infinite: always blocked
-				return nil
+				return nil // infinite: always blocked
 			}
 		} else {
 			nackChannel = func() <-chan time.Time {
@@ -249,10 +248,16 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	}
 
 	s.Subscriptions.Add(1)
+	ctx, cancel := context.WithCancel(ctx)
+	go func(done <-chan struct{}) {
+		<-done
+		cancel()
+	}(s.Closed)
 	go func(ctx context.Context) {
 		defer s.Subscriptions.Done()
 		sub.Run(ctx)
 		close(sub.destination)
+		cancel()
 	}(ctx)
 
 	return sub.destination, nil
@@ -277,6 +282,7 @@ func (s *subscriber) Close() error {
 	return nil
 }
 
+// String returns a convenient string identifier representing the subscriber.
 func (s *subscriber) String() string {
 	return "sqlite3-modernc-subscriber-" + s.UUID
 }
