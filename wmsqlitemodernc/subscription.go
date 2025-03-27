@@ -131,9 +131,6 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-ctx.Done():
 			msg.Nack()
 			return nil
-		// TODO: attemped to write a test for this condition
-		// it catches double locking even on short time out
-		// make sure hungLongAck test behaves properly
 		case <-s.lockTicker.C:
 			if err := s.ExtendLock(ctx); err != nil {
 				return err

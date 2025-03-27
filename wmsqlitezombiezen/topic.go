@@ -26,8 +26,8 @@ func createTopicAndOffsetsTablesIfAbsent(conn *sqlite.Conn, messagesTableName, o
 	if err = validateTopicName(messagesTableName); err != nil {
 		return err
 	}
-	// adding UNIQUE(uuid) constraint slows the driver down without benefit
 
+	// adding UNIQUE(uuid) constraint slows the driver down without benefit
 	if err = sqlitex.ExecuteTransient(
 		conn,
 		`CREATE TABLE IF NOT EXISTS '`+messagesTableName+`' (

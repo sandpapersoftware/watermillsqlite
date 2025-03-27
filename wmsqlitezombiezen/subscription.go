@@ -3,7 +3,6 @@ package wmsqlitezombiezen
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,11 +43,15 @@ type rawMessage struct {
 	Metadata message.Metadata
 }
 
+// NextBatch fetches the next batch of messages from the database.
+// Returns [io.ErrNoProgress] is row lock could not be acquired.
 func (s *subscription) NextBatch() (batch []rawMessage, err error) {
-	closeTransaction, err := sqlitex.ExclusiveTransaction(s.Connection)
+	// TODO: or ExclusiveTransaction?
+	closeTransaction, err := sqlitex.ImmediateTransaction(s.Connection)
 	if err != nil {
 		return nil, err
 	}
+	// closeTransaction := sqlitex.Transaction(s.Connection)
 	defer closeTransaction(&err)
 
 	if err = s.stmtLockConsumerGroup.Reset(); err != nil {
@@ -59,7 +62,7 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		return nil, fmt.Errorf("unable to read offset_acked value: %w", err)
 	}
 	if !ok {
-		return nil, sql.ErrNoRows
+		return nil, io.ErrNoProgress
 	}
 	s.lockedOffset = s.stmtLockConsumerGroup.ColumnInt64(0)
 	s.lastAckedOffset = s.lockedOffset
@@ -174,9 +177,6 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-ctx.Done():
 			msg.Nack()
 			return nil
-		// TODO: attemped to write a test for this condition
-		// it catches double locking even on short time out
-		// make sure hungLongAck test behaves properly
 		case <-s.lockTicker.C:
 			if err := s.ExtendLock(); err != nil {
 				return err
@@ -221,8 +221,8 @@ func (s *subscription) Run(ctx context.Context) {
 
 		batch, err = s.NextBatch()
 		if err != nil {
-			// sql.ErrNoRows indicates failure to acquire consumer group lock
-			if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrNoRows) {
+			// io.ErrNoProgress indicates failure to acquire consumer group lock
+			if !errors.Is(err, io.ErrNoProgress) && !isInterrupt(err) {
 				s.logger.Error("next message batch query failed", err, nil)
 			}
 			continue
@@ -230,7 +230,7 @@ func (s *subscription) Run(ctx context.Context) {
 
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil {
-				if !errors.Is(err, context.Canceled) {
+				if !isInterrupt(err) {
 					s.logger.Error("failed to process queued message", err, nil)
 				}
 				continue
@@ -238,9 +238,16 @@ func (s *subscription) Run(ctx context.Context) {
 		}
 
 		if err = s.ReleaseLock(); err != nil {
-			if !errors.Is(err, context.Canceled) {
+			if !isInterrupt(err) {
 				s.logger.Error("failed to acknowledge processed messages", err, nil)
 			}
 		}
 	}
+}
+
+func isInterrupt(err error) bool {
+	if sqlite.ErrCode(err) == sqlite.ResultInterrupt {
+		return true
+	}
+	return errors.Is(err, io.ErrNoProgress)
 }

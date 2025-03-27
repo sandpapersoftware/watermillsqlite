@@ -55,6 +55,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
 connectionDSN := ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
 conn, err := sqlite.OpenConn(connectionDSN)
 if err != nil {

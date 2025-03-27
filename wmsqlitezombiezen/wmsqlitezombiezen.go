@@ -1,8 +1,5 @@
 package wmsqlitezombiezen
 
-// return New("file:memory:?mode=memory&journal_mode=WAL&busy_timeout=3000&secure_delete=true&foreign_keys=true&cache=shared", poolSize)
-// &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
-
 // TableNameGenerator creates a table name for a given topic either for
 // a topic table or for offsets table.
 type TableNameGenerator func(topic string) string

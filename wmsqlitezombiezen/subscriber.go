@@ -129,6 +129,14 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 			}
 		}
 	}
+	if options.BufferPool == nil {
+		options.BufferPool = defaultBufferPool
+	}
+	b, ok := options.BufferPool.Get().(*bytes.Buffer)
+	defer options.BufferPool.Put(b)
+	if !ok {
+		return nil, errors.New("BufferPool.Get() did not return a *bytes.Buffer")
+	}
 
 	ID := uuid.New().String()
 	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
@@ -143,7 +151,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 		Closed:                    make(chan struct{}),
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
-		BufferPool:                cmp.Or(options.BufferPool, defaultBufferPool),
+		BufferPool:                options.BufferPool,
 		Logger: cmp.Or[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),

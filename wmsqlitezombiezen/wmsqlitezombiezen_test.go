@@ -48,7 +48,7 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 		sub, err := NewSubscriber(connectionDSN,
 			SubscriberOptions{
 				PollInterval:     time.Millisecond * 20,
-				BatchSize:        5, // TODO: increase to defaul 100
+				BatchSize:        20, // TODO: increase to defaul 100
 				ConsumerGroup:    consumerGroup,
 				InitializeSchema: true,
 			})
@@ -99,6 +99,6 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
 	}
-	t.Run("file bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewFileDB(t))))
-	// t.Run("memory bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewEphemeralDB(t))))
+	// t.Run("file bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewFileDB(t))))
+	t.Run("memory bound transactions", clonedTests.OfficialImplementationAcceptance(clonedTests.PubSubFixture(NewEphemeralDB(t))))
 }

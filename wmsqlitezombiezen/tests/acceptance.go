@@ -41,7 +41,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 			TestID:   tests.NewTestID(),
 			Features: features,
 		}
-		tests.TestPublishSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
+		// tests.TestPublishSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConcurrentSubscribe(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConcurrentSubscribeMultipleTopics(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestResendOnError(t, tCtx, fixture.WithConsumerGroup("test"))
@@ -50,7 +50,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		// tests.TestConcurrentClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestContinueAfterErrors(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestPublishSubscribeInOrder(t, tCtx, fixture.WithConsumerGroup("test"))
-		// tests.TestPublisherClose(t, tCtx, fixture.WithConsumerGroup("test"))
+		tests.TestPublisherClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestTopic(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test"))
