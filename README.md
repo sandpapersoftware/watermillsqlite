@@ -1,12 +1,12 @@
 # Watermill SQLite3 Driver Pack
 
-Golang SQLite3 driver pack for Watermill event dispatcher. Drivers satisfy the following interfaces:
+Golang SQLite3 driver pack for <watermill.io> event bus. Drivers satisfy the following interfaces:
 
 - [message.Publisher](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Publisher)
 - [message.Subscriber](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Subscriber)
 
 ## ModernC
-[![Go Reference](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ThreeDotsLabs/watermill.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitemodernc)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
 [![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc)
 
@@ -44,7 +44,7 @@ if err != nil {
 ```
 
 ## ZombieZen
-[![Go Reference](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ThreeDotsLabs/watermill.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
 [![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen)
 
@@ -55,11 +55,7 @@ go get -u github.com/dkotik/watermillsqlite/wmsqlitezombiezen
 ZombieZen driver abandons the standard Golang library SQL conventions in favor of more orthogonal API and performance. Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. It is about **6 times faster** than the ModernC driver. And, it is currently more stable due to lower level control. It is faster than even the CGO SQLite variants.
 
 ```go
-import (
-	"database/sql"
-	"github.com/dkotik/watermillsqlite/wmsqlitezombiezen"
-	_ "modernc.org/sqlite"
-)
+import "github.com/dkotik/watermillsqlite/wmsqlitezombiezen"
 
 // &cache=shared is critical, see: https://github.com/zombiezen/go-sqlite/issues/92#issuecomment-2052330643
 connectionDSN := ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
@@ -80,13 +76,14 @@ if err != nil {
 // ... follow guides on <https://watermill.io>
 ```
 
-## Development: Alpha Version
+## Development Roadmap
 
 SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations.
 
-Current architectural decision is to lock a consumer group offset using `unixepoch()+graceTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `graceTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out.
+Current architectural decision is to lock a consumer group offset using `unixepoch()+lockTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `lockTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out. A time field solution may appear primitive, but databases use a network timeout to terminate transactions when disconnecting. Its presence is concealed because the logic resides in a lower stack level.
 
 - [ ] ModernC version repeated tests flake out usually when running with -count=5, but for a single run they pass.
+- [ ] Add lock timeout option.
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics
