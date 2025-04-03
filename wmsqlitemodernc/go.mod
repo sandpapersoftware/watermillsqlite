@@ -1,6 +1,6 @@
 module github.com/dkotik/watermillsqlite/wmsqlitemodernc
 
-go 1.24
+go 1.21
 
 require github.com/ThreeDotsLabs/watermill v1.4.6
 

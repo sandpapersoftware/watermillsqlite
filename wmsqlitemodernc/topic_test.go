@@ -1,11 +1,16 @@
 package wmsqlitemodernc
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 )
 
 func TestTopicTableCreation(t *testing.T) {
+	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
 	db, err := sql.Open("sqlite", ":memory:?journal_mode=WAL&busy_timeout=1000&cache=shared")
 	if err != nil {
 		t.Fatal(err)
@@ -18,7 +23,7 @@ func TestTopicTableCreation(t *testing.T) {
 	})
 
 	err = createTopicAndOffsetsTablesIfAbsent(
-		t.Context(),
+		ctx,
 		db,
 		"messagesTableName",
 		"offsetsTableName",
@@ -27,7 +32,7 @@ func TestTopicTableCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows, err := db.QueryContext(t.Context(), `
+	rows, err := db.QueryContext(ctx, `
 	SELECT
 	    name
 	FROM

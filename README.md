@@ -32,11 +32,15 @@ if err != nil {
 db.SetMaxOpenConns(1)
 defer db.Close()
 
-pub, err := wmsqlitemodernc.NewPublisher(db, wmsqlitemodernc.PublisherOptions{})
+pub, err := wmsqlitemodernc.NewPublisher(db, wmsqlitemodernc.PublisherOptions{
+	InitializeSchema: true, // create tables for used topics
+})
 if err != nil {
 	panic(err)
 }
-sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{})
+sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{
+	InitializeSchema: true, // create tables for used topics
+})
 if err != nil {
 	panic(err)
 }
@@ -65,11 +69,15 @@ if err != nil {
 }
 defer conn.Close()
 
-pub, err := wmsqlitezombiezen.NewPublisher(conn, wmsqlitezombiezen.PublisherOptions{})
+pub, err := wmsqlitezombiezen.NewPublisher(conn, wmsqlitezombiezen.PublisherOptions{
+	InitializeSchema: true, // create tables for used topics
+})
 if err != nil {
 	panic(err)
 }
-sub, err := wmsqlitezombiezen.NewSubscriber(connectionDSN, wmsqlitezombiezen.SubscriberOptions{})
+sub, err := wmsqlitezombiezen.NewSubscriber(connectionDSN, wmsqlitezombiezen.SubscriberOptions{
+	InitializeSchema: true, // create tables for used topics
+})
 if err != nil {
 	panic(err)
 }

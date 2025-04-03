@@ -16,7 +16,7 @@ func TestBasicSendRecieve(setup PubSubFixture) func(t *testing.T) {
 		t.Run("publish 20 messages", func(t *testing.T) {
 			t.Parallel()
 
-			for range 10 {
+			for i := 0; i < 10; i++ {
 				msg := message.NewMessage(uuid.New().String(), []byte("test"))
 				msg2 := message.NewMessage(uuid.New().String(), []byte("test"))
 				if err := pub.Publish(topic, msg, msg2); err != nil {
@@ -27,9 +27,11 @@ func TestBasicSendRecieve(setup PubSubFixture) func(t *testing.T) {
 
 		t.Run("collect 20 messages", func(t *testing.T) {
 			t.Parallel()
-
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second*5)
+			// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+			ctx, cancel := context.WithTimeout(context.TODO(), time.Second*5)
 			defer cancel()
+			// ctx, cancel := context.WithTimeout(t.Context(), time.Second*5)
+			// defer cancel()
 
 			msgs, err := sub.Subscribe(ctx, topic)
 			if err != nil {
@@ -83,7 +85,7 @@ func TestOnePublisherThreeSubscribers(setup PubSubFixture, messageCount int) fun
 		pub, sub := setup(t, "")
 		t.Run("publish messages", func(t *testing.T) {
 			t.Parallel()
-			for range messageCount {
+			for i := 0; i < messageCount; i++ {
 				msg := message.NewMessage(uuid.New().String(), []byte("test"))
 				if err := pub.Publish(topic, msg); err != nil {
 					t.Fatal(err)
@@ -93,15 +95,19 @@ func TestOnePublisherThreeSubscribers(setup PubSubFixture, messageCount int) fun
 
 		t.Run("collect messages", func(t *testing.T) {
 			t.Parallel()
-			first, err := sub.Subscribe(t.Context(), topic)
+			// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+			ctx, cancel := context.WithCancel(context.TODO())
+			defer cancel()
+
+			first, err := sub.Subscribe(ctx, topic)
 			if err != nil {
 				t.Fatal(err)
 			}
-			second, err := sub.Subscribe(t.Context(), topic)
+			second, err := sub.Subscribe(ctx, topic)
 			if err != nil {
 				t.Fatal(err)
 			}
-			third, err := sub.Subscribe(t.Context(), topic)
+			third, err := sub.Subscribe(ctx, topic)
 			if err != nil {
 				t.Fatal(err)
 			}

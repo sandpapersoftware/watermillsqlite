@@ -1,7 +1,6 @@
 package wmsqlitemodernc
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,7 +61,7 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 
 	ID := uuid.New().String()
 	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
-	ctx, cancel := context.WithCancelCause(cmp.Or(options.ParentContext, context.Background()))
+	ctx, cancel := context.WithCancelCause(cmpOrTODO(options.ParentContext, context.Background()))
 	return &publisher{
 		Context:                   ctx,
 		ContextCancel:             cancel,
@@ -70,7 +69,7 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 		DB:                        db,
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
-		Logger: cmp.Or[watermill.LoggerAdapter](
+		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{

@@ -1,6 +1,7 @@
 package wmsqlitemodernc_test
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -18,7 +19,8 @@ func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 		pub, err := wmsqlitemodernc.NewPublisher(
 			db,
 			wmsqlitemodernc.PublisherOptions{
-				ParentContext:    t.Context(),
+				// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+				ParentContext:    context.TODO(),
 				InitializeSchema: true,
 			})
 		if err != nil {

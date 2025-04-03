@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ func hungDestinationChannel(pub message.Publisher, sub message.Subscriber) func(
 	topic := "hung-destination-channel-test"
 	return func(t *testing.T) {
 		t.Parallel()
+		// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
 
 		err := pub.Publish(
 			topic,
@@ -33,7 +37,7 @@ func hungDestinationChannel(pub message.Publisher, sub message.Subscriber) func(
 			t.Fatal("failed to publish messages", err)
 		}
 
-		msgs1, err := sub.Subscribe(t.Context(), topic)
+		msgs1, err := sub.Subscribe(ctx, topic)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +45,7 @@ func hungDestinationChannel(pub message.Publisher, sub message.Subscriber) func(
 		<-time.After(time.Second)
 		// first subscriber locked the row
 		// add the second subscriber
-		_, err = sub.Subscribe(t.Context(), topic)
+		_, err = sub.Subscribe(ctx, topic)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,6 +72,9 @@ func hungLongAck(pub message.Publisher, sub message.Subscriber) func(t *testing.
 	topic := "hung-long-ack-test"
 	return func(t *testing.T) {
 		t.Parallel()
+		// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+		ctx, cancel := context.WithCancel(context.TODO())
+		defer cancel()
 
 		err := pub.Publish(
 			topic,
@@ -78,13 +85,13 @@ func hungLongAck(pub message.Publisher, sub message.Subscriber) func(t *testing.
 			t.Fatal("failed to publish messages", err)
 		}
 
-		msgs1, err := sub.Subscribe(t.Context(), topic)
+		msgs1, err := sub.Subscribe(ctx, topic)
 		if err != nil {
 			t.Fatal(err)
 		}
 		go func() {
 			select {
-			case <-t.Context().Done():
+			case <-ctx.Done():
 				return
 			case <-msgs1:
 				// accept every message but never acknowledge it
@@ -94,7 +101,7 @@ func hungLongAck(pub message.Publisher, sub message.Subscriber) func(t *testing.
 		<-time.After(time.Second)
 		// first subscriber locked the row
 		// add the second subscriber
-		msgs2, err := sub.Subscribe(t.Context(), topic)
+		msgs2, err := sub.Subscribe(ctx, topic)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +134,8 @@ func hungNackTest(pub message.Publisher, sub message.Subscriber) func(t *testing
 			t.Fatal(err)
 		}
 
-		msgs, err := sub.Subscribe(t.Context(), topic)
+		// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+		msgs, err := sub.Subscribe(context.TODO(), topic)
 		if err != nil {
 			t.Fatal(err)
 		}
