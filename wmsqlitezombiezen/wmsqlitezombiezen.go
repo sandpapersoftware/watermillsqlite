@@ -1,5 +1,17 @@
 package wmsqlitezombiezen
 
+// TODO: replace with cmp.Or after Watermill
+// upgrades Golang version to 1.22
+func cmpOrTODO[T comparable](vals ...T) T {
+	var zero T
+	for _, val := range vals {
+		if val != zero {
+			return val
+		}
+	}
+	return zero
+}
+
 // TableNameGenerator creates a table name for a given topic either for
 // a topic table or for offsets table.
 type TableNameGenerator func(topic string) string

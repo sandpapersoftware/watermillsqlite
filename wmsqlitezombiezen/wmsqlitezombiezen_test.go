@@ -22,7 +22,8 @@ func newTestConnection(t *testing.T, connectionDSN string) *sqlite.Conn {
 			t.Fatal("unable to close test SQLite connetion", err)
 		}
 	})
-	conn.SetInterrupt(t.Context().Done())
+	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+	// conn.SetInterrupt(t.Context().Done())
 	return conn
 }
 

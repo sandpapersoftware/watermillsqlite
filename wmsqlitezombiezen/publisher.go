@@ -1,7 +1,6 @@
 package wmsqlitezombiezen
 
 import (
-	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,7 +56,7 @@ func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publishe
 		UUID:                      ID,
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
-		Logger: cmp.Or[watermill.LoggerAdapter](
+		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{

@@ -2,7 +2,6 @@ package wmsqlitezombiezen
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -142,16 +141,16 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 	return &subscriber{
 		ConnectionDSN:             connectionDSN,
 		UUID:                      ID,
-		PollInterval:              cmp.Or(options.PollInterval, time.Second),
+		PollInterval:              cmpOrTODO(options.PollInterval, time.Second),
 		InitializeSchema:          options.InitializeSchema,
 		ConsumerGroup:             options.ConsumerGroup,
-		BatchSize:                 cmp.Or(options.BatchSize, 100),
+		BatchSize:                 cmpOrTODO(options.BatchSize, 100),
 		NackChannel:               nackChannel,
 		Closed:                    make(chan struct{}),
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
 		BufferPool:                options.BufferPool,
-		Logger: cmp.Or[watermill.LoggerAdapter](
+		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
