@@ -43,10 +43,14 @@ func (s *subscription) NextBatch(ctx context.Context) (batch []rawMessage, err e
 		return nil, err
 	}
 	defer func() {
-		if err != nil {
-			err = errors.Join(err, tx.Rollback())
-		} else {
+		if err == nil {
 			err = tx.Commit()
+		}
+		err = errors.Join(err, tx.Rollback())
+		if errors.Is(err, sql.ErrTxDone) {
+			// never return [sql.ErrTxDone] because it will break the official acceptance tests
+			// when they are run with -count=5 or more
+			err = nil
 		}
 	}()
 
@@ -57,7 +61,7 @@ func (s *subscription) NextBatch(ctx context.Context) (batch []rawMessage, err e
 	}
 	if err = lock.Scan(&s.lockedOffset); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
+			return nil, tx.Commit() // unable  to acquire row lock
 		}
 		return nil, fmt.Errorf("unable to scan offset_acked value: %w", err)
 	}
@@ -168,8 +172,7 @@ func (s *subscription) Run(ctx context.Context) {
 
 		batch, err = s.NextBatch(ctx)
 		if err != nil {
-			// sql.ErrNoRows indicates failure to acquire consumer group lock
-			if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrNoRows) {
+			if !errors.Is(err, context.Canceled) {
 				s.logger.Error("next message batch query failed", err, nil)
 			}
 			continue

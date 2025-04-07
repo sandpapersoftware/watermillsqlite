@@ -11,13 +11,31 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
-func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
+func newTestConnection(t *testing.T, connectionDSN string) *sql.DB {
+	db, err := sql.Open("sqlite", connectionDSN)
+	if err != nil {
+		t.Fatal("unable to create test SQLite connetion", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatal("unable to close test SQLite connetion", err)
+		}
+	})
+	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+	// conn.SetInterrupt(t.Context().Done())
+	return db
+}
+
+func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
+		publisherDB := newTestConnection(t, connectionDSN)
+
 		pub, err := wmsqlitemodernc.NewPublisher(
-			db,
+			publisherDB,
 			wmsqlitemodernc.PublisherOptions{
 				// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
 				ParentContext:    context.TODO(),
@@ -32,13 +50,14 @@ func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 			}
 		})
 
-		sub, err := wmsqlitemodernc.NewSubscriber(db, wmsqlitemodernc.SubscriberOptions{
+		subscriberDB := newTestConnection(t, connectionDSN)
+		sub, err := wmsqlitemodernc.NewSubscriber(subscriberDB, wmsqlitemodernc.SubscriberOptions{
 			PollInterval:     time.Millisecond * 20,
 			ConsumerGroup:    consumerGroup,
 			InitializeSchema: true,
 		})
 		if err != nil {
-			t.Fatal("unable to initialize publisher:", err)
+			t.Fatal("unable to initialize subscriber:", err)
 		}
 		t.Cleanup(func() {
 			if err := sub.Close(); err != nil {
@@ -51,41 +70,18 @@ func NewPubSubFixture(db wmsqlitemodernc.SQLiteDatabase) tests.PubSubFixture {
 }
 
 func NewEphemeralDB(t *testing.T) tests.PubSubFixture {
-	// &_txlock=exclusive
-	db, err := sql.Open("sqlite",
-		":memory:?journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared",
-	)
-	db.SetMaxOpenConns(1)
-	if err != nil {
-		t.Fatal("unable to open database:", err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Fatal("unable to close test SQLite database", err)
-		}
-	})
-	return NewPubSubFixture(db)
+	return NewPubSubFixture("file:" + uuid.New().String() + "?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
 }
 
-func NewFilelDB(t *testing.T) tests.PubSubFixture {
-	// &_txlock=exclusive
-	file := filepath.Join(t.TempDir(), "db.sqlite3")
-	db, err := sql.Open("sqlite",
-		"file:"+file+"?journal_mode=WAL&busy_timeout=5000&secure_delete=true&foreign_keys=true&cache=shared",
-	)
-	db.SetMaxOpenConns(1)
-	if err != nil {
-		t.Fatal("unable to open database:", err)
-	}
+func NewFileDB(t *testing.T) tests.PubSubFixture {
+	file := filepath.Join(t.TempDir(), uuid.New().String()+".sqlite3")
 	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Fatal("unable to close test SQLite database", err)
-		}
 		if err := os.Remove(file); err != nil {
 			t.Fatal("unable to remove test SQLite database file", err)
 		}
 	})
-	return NewPubSubFixture(db)
+	// &_txlock=exclusive
+	return NewPubSubFixture("file:" + file + "?journal_mode=WAL&busy_timeout=5000&secure_delete=true&foreign_keys=true&cache=shared")
 }
 
 func TestPubSub(t *testing.T) {
@@ -102,6 +98,6 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("acceptance tests take several minutes to complete for all file and memory bound transactions")
 	}
-	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFilelDB(t)))
+	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFileDB(t)))
 	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(NewEphemeralDB(t)))
 }
