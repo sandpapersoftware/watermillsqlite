@@ -15,7 +15,7 @@ func TestHungOperations(setup PubSubFixture) func(t *testing.T) {
 		pub, sub := setup(t, "hungTests")
 
 		t.Run("busy destination channel releases row lock", hungDestinationChannel(pub, sub))
-		// t.Run("long ack does not lose row lock", hungLongAck(pub, sub))
+		t.Run("long ack does not lose row lock", hungLongAck(pub, sub))
 		t.Run("nack does not cause an inifite loop", hungNackTest(pub, sub))
 	}
 }
@@ -114,7 +114,7 @@ func hungLongAck(pub message.Publisher, sub message.Subscriber) func(t *testing.
 		case msg := <-msgs2:
 			t.Fatal("the second subscriber obtained the lock on message:", msg.UUID)
 		case <-time.After(time.Second):
-			t.Fatal("pass test")
+			// expected behavior
 		}
 	}
 }

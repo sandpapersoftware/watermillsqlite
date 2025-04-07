@@ -52,7 +52,7 @@ func OfficialImplementationAcceptance(fixture PubSubFixture) func(t *testing.T) 
 		// tests.TestPublishSubscribeInOrder(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestPublisherClose(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestTopic(t, tCtx, fixture.WithConsumerGroup("test"))
-		// // tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
+		// tests.TestMessageCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestSubscribeCtx(t, tCtx, fixture.WithConsumerGroup("test"))
 		// tests.TestConsumerGroups(t, tCtx, tests.ConsumerGroupPubSubConstructor(fixture)) // requires features.ConsumerGroups=true
 

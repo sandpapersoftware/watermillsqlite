@@ -199,6 +199,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	go func(ctx context.Context) {
 		defer s.Subscriptions.Done()
 		sub.Run(ctx)
+		// <-time.After(time.Second) // give a chance for mid-air transaction to commit
 		close(sub.destination)
 		cancel()
 	}(ctx)

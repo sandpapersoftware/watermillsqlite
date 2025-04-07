@@ -37,10 +37,7 @@ type rawMessage struct {
 	Metadata message.Metadata
 }
 
-func (s *subscription) NextBatch(ctx context.Context) (
-	batch []rawMessage,
-	err error,
-) {
+func (s *subscription) NextBatch(ctx context.Context) (batch []rawMessage, err error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -48,10 +45,13 @@ func (s *subscription) NextBatch(ctx context.Context) (
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, tx.Rollback())
+		} else {
+			err = tx.Commit()
 		}
 	}()
 
-	lock := tx.QueryRowContext(ctx, s.sqlLockConsumerGroup)
+	// Transaction execution and query operations must be context-less. Otherwise, a message occasionally will get lost, because the transaction will not be committed because one of the operations will not run with a cancelled context. Strange behavior, but it is proven by TestContinueAfterSubscribeClose with run with -count=5 or more.
+	lock := tx.QueryRow(s.sqlLockConsumerGroup)
 	if err = lock.Err(); err != nil {
 		return nil, fmt.Errorf("unable to acquire row lock: %w", err)
 	}
@@ -63,15 +63,18 @@ func (s *subscription) NextBatch(ctx context.Context) (
 	}
 	s.lastAckedOffset = s.lockedOffset
 
-	rows, err := tx.QueryContext(ctx, s.sqlNextMessageBatch, s.lockedOffset)
+	rows, err := tx.Query(s.sqlNextMessageBatch, s.lockedOffset) // contextless
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to query next message batch: %w", err)
 	}
+	return buildBatch(rows)
+}
+
+func buildBatch(rows *sql.Rows) (batch []rawMessage, err error) {
 	defer func() {
 		err = errors.Join(rows.Close())
 	}()
-
-	rawMetadata := []byte{}
+	rawMetadata := []byte{} // TODO: use buffer pool
 	for rows.Next() {
 		next := rawMessage{}
 		if err = rows.Scan(&next.Offset, &next.UUID, &next.Payload, &rawMetadata); err != nil {
@@ -85,7 +88,7 @@ func (s *subscription) NextBatch(ctx context.Context) (
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return batch, tx.Commit()
+	return batch, nil
 }
 
 func (s *subscription) ExtendLock(ctx context.Context) error {

@@ -89,8 +89,10 @@ func NewFilelDB(t *testing.T) tests.PubSubFixture {
 }
 
 func TestPubSub(t *testing.T) {
+	// if !testing.Short() {
+	// 	t.Skip("working on acceptance tests")
+	// }
 	inMemory := NewEphemeralDB(t)
-
 	t.Run("basic functionality", tests.TestBasicSendRecieve(inMemory))
 	t.Run("one publisher three subscribers", tests.TestOnePublisherThreeSubscribers(inMemory, 1000))
 	t.Run("perpetual locks", tests.TestHungOperations(inMemory))
