@@ -50,6 +50,10 @@ func (s *subscription) NextBatch(ctx context.Context) (batch []rawMessage, err e
 		if errors.Is(err, sql.ErrTxDone) {
 			// never return [sql.ErrTxDone] because it will break the official acceptance tests
 			// when they are run with -count=5 or more
+			//
+			// since SQLite is basically a file handle, the transaction gets stuck if it does not complete
+			// another subscriber inserts itself into the transaction because it is recorded into the
+			// write-ahead-journal. Just a guess. Concealing the error removed dead locks.
 			err = nil
 		}
 	}()

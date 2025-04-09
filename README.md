@@ -1,9 +1,12 @@
 # Watermill SQLite3 Driver Pack
 
-Golang SQLite3 driver pack for <watermill.io> event bus. Drivers satisfy the following interfaces:
+Golang SQLite3 driver pack for <https://watermill.io> event dispatch framework. Drivers satisfy the following interfaces:
 
 - [message.Publisher](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Publisher)
 - [message.Subscriber](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Subscriber)
+- [middleware.ExpiringKeyRepository](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message/router/middleware#ExpiringKeyRepository) for message de-duplicator.
+
+SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations. Current architectural decision is to lock a consumer group offset using `unixepoch()+lockTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `lockTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out. A time lock fulfills the role of a traditional database network timeout that terminates transactions when its client disconnects.
 
 ## ModernC
 [![Go Reference](https://pkg.go.dev/badge/github.com/ThreeDotsLabs/watermill.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
@@ -86,16 +89,10 @@ if err != nil {
 
 ## Development Roadmap
 
-SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations.
-
-Current architectural decision is to lock a consumer group offset using `unixepoch()+lockTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `lockTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out. A time field solution may appear primitive, but databases use a network timeout to terminate transactions when disconnecting. Its presence is concealed because the logic resides in a lower stack level.
-
-- [ ] ModernC version repeated tests flake out usually when running with -count=5, but for a single run they pass.
 - [ ] Add lock timeout option.
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics
-- [ ] Add `NewDeduplicator` constructor for deduplication middleware.
 - [x] Finish time-based lock extension when:
     - [x] sending a message to output channel
     - [x] waiting for message acknowledgement
