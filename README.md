@@ -4,7 +4,7 @@ Golang SQLite3 driver pack for <https://watermill.io> event dispatch framework. 
 
 - [message.Publisher](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Publisher)
 - [message.Subscriber](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message#Subscriber)
-- [middleware.ExpiringKeyRepository](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message/router/middleware#ExpiringKeyRepository) for message de-duplicator.
+- [middleware.ExpiringKeyRepository](https://pkg.go.dev/github.com/ThreeDotsLabs/watermill@v1.4.6/message/router/middleware#ExpiringKeyRepository) for message de-duplicator
 
 SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations. Current architectural decision is to lock a consumer group offset using `unixepoch()+lockTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `lockTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out. A time lock fulfills the role of a traditional database network timeout that terminates transactions when its client disconnects.
 
@@ -89,7 +89,6 @@ if err != nil {
 
 ## Development Roadmap
 
-- [ ] Add lock timeout option.
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -12,6 +13,10 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 )
+
+// DefaultSubscriberLockTimeout is the default duration of the row lock
+// setting for [SubscriberOptions]. Must be in full seconds.
+const DefaultSubscriberLockTimeout = 5 * time.Second
 
 // SubscriberOptions defines options for creating a subscriber. Every selection has a reasonable default value.
 type SubscriberOptions struct {
@@ -32,6 +37,15 @@ type SubscriberOptions struct {
 	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database (Prefer using the BackoffManager instead).
 	// Must be non-negative. Defaults to one second.
 	PollInterval time.Duration
+
+	// LockTimeout is the duration of the row lock. If the subscription
+	// is unable to extend the lock before time out ends, it will expire.
+	// Then, another subscriber in the same consumer group name may
+	// acquire the lock and continue processing messages.
+	//
+	// Defaults to [DefaultLockTimeout]. Implementation rounds the
+	// timeout to the nearest second.
+	LockTimeout time.Duration
 
 	// AckDeadline is the time to wait for acking a message.
 	// If message is not acked within this time, it will be nacked and re-delivered.
@@ -55,6 +69,7 @@ type subscriber struct {
 	DB                        SQLiteDatabase
 	UUID                      string
 	PollInterval              time.Duration
+	LockTimeoutInSeconds      int
 	InitializeSchema          bool
 	ConsumerGroup             string
 	BatchSize                 int
@@ -88,6 +103,13 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 	if options.PollInterval > time.Hour*24*7 {
 		return nil, errors.New("PollInterval must be less than a week")
 	}
+	if options.LockTimeout < time.Second {
+		if options.LockTimeout == 0 {
+			options.LockTimeout = DefaultSubscriberLockTimeout
+		} else {
+			return nil, errors.New("LockTimeout must be greater than one second")
+		}
+	}
 
 	nackChannel := func() <-chan time.Time {
 		// by default, Nack messages if they take longer than 30 seconds to process
@@ -116,6 +138,7 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 		DB:                        db,
 		UUID:                      ID,
 		PollInterval:              cmpOrTODO(options.PollInterval, time.Second),
+		LockTimeoutInSeconds:      int(math.Round(options.LockTimeout.Seconds())),
 		InitializeSchema:          options.InitializeSchema,
 		ConsumerGroup:             options.ConsumerGroup,
 		BatchSize:                 cmpOrTODO(options.BatchSize, 100),
@@ -163,16 +186,24 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		return nil, err
 	}
 
-	graceSeconds := 5 // TODO: customize grace period
 	sub := &subscription{
 		DB:           s.DB,
 		pollTicker:   time.NewTicker(s.PollInterval),
-		lockTicker:   time.NewTicker(time.Second * time.Duration(graceSeconds-1)),
-		lockDuration: time.Second * time.Duration(graceSeconds-1),
+		lockDuration: time.Second*time.Duration(s.LockTimeoutInSeconds) - (time.Millisecond * 300), // less than the lock timeout
 		ackChannel:   s.NackChannel,
 
-		sqlLockConsumerGroup: fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`, offsetsTableName, graceSeconds, s.ConsumerGroup),
-		sqlExtendLock:        fmt.Sprintf(`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`, offsetsTableName, graceSeconds, s.ConsumerGroup),
+		sqlLockConsumerGroup: fmt.Sprintf(
+			`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`,
+			offsetsTableName,
+			s.LockTimeoutInSeconds,
+			s.ConsumerGroup,
+		),
+		sqlExtendLock: fmt.Sprintf(
+			`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group="%s" AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0)`,
+			offsetsTableName,
+			s.LockTimeoutInSeconds,
+			s.ConsumerGroup,
+		),
 		sqlNextMessageBatch: fmt.Sprintf(`
 			SELECT "offset", uuid, payload, metadata
 			FROM '%s'
@@ -188,6 +219,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 			},
 		),
 	}
+	sub.lockTicker = time.NewTicker(sub.lockDuration)
 
 	ctx, cancel := context.WithCancel(ctx)
 	go func(done <-chan struct{}) {
