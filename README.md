@@ -8,7 +8,7 @@ Golang SQLite3 driver pack for <https://watermill.io> event dispatch framework. 
 
 SQLite3 does not support querying `FOR UPDATE`, which is used for row locking when subscribers in the same consumer group read an event batch in official Watermill SQL PubSub implementations. Current architectural decision is to lock a consumer group offset using `unixepoch()+lockTimeout` time stamp. While one consumed message is processing per group, the offset lock time is extended by `lockTimeout` periodically by `time.Ticker`. If the subscriber is unable to finish the consumer group batch, other subscribers will take over the lock as soon as the grace period runs out. A time lock fulfills the role of a traditional database network timeout that terminates transactions when its client disconnects.
 
-## ModernC
+## Vanilla ModernC Driver
 [![Go Reference](https://pkg.go.dev/badge/github.com/ThreeDotsLabs/watermill.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitemodernc)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitemodernc)
 [![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitemodernc)
@@ -17,7 +17,7 @@ SQLite3 does not support querying `FOR UPDATE`, which is used for row locking wh
 go get -u github.com/dkotik/watermillsqlite/wmsqlitemodernc
 ```
 
-ModernC driver is compatible with the Golang standard library SQL package. It works without CGO.
+The ModernC driver is compatible with the Golang standard library SQL package. It works without CGO. Has fewer dependencies than the ZombieZen variant.
 
 ```go
 import (
@@ -50,7 +50,7 @@ if err != nil {
 // ... follow guides on <https://watermill.io>
 ```
 
-## ZombieZen
+## Advanced ZombieZen Driver
 [![Go Reference](https://pkg.go.dev/badge/github.com/ThreeDotsLabs/watermill.svg)](https://pkg.go.dev/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)](https://goreportcard.com/report/github.com/dkotik/watermillsqlite/wmsqlitezombiezen)
 [![codecov](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen/branch/master/graph/badge.svg)](https://codecov.io/gh/dkotik/watermillsqlite/wmsqlitezombiezen)
@@ -59,7 +59,9 @@ if err != nil {
 go get -u github.com/dkotik/watermillsqlite/wmsqlitezombiezen
 ```
 
-ZombieZen driver abandons the standard Golang library SQL conventions in favor of more orthogonal API and performance. Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. It is about **6 times faster** than the ModernC driver. And, it is currently more stable due to lower level control. It is faster than even the CGO SQLite variants.
+The ZombieZen driver abandons the standard Golang library SQL conventions in favor of [the more orthogonal API and higher performance potential](https://crawshaw.io/blog/go-and-sqlite). Under the hood, it uses ModernC SQLite3 implementation and does not need CGO. Advanced SQLite users might prefer this driver.
+
+It is about **6 times faster** than the ModernC variant. It is currently more stable due to lower level control. It is faster than even the CGO SQLite variants on standard library interfaces, and with some tuning should become the absolute speed champion of persistent message brokers over time. Tuned SQLite is [~35% faster](https://sqlite.org/fasterthanfs.html) than the Linux file system.
 
 ```go
 import "github.com/dkotik/watermillsqlite/wmsqlitezombiezen"
@@ -93,7 +95,7 @@ if err != nil {
     - [ ] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466
     - [ ] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from first
     - [ ] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important
-    - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error
+    - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error ([fixed](https://github.com/dkotik/watermillsqlite/commit/e09a9365230f04b14b0d63c76bc8a9c8e94436b7))
     - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
     - [ ] does it  make sense to have two implementations -> if so, guide which to choose for people
     - [ ] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally
