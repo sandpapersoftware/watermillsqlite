@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"strings"
 	"sync"
@@ -188,7 +187,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 // Returns [io.ErrPipeClosed] if the subscriber is closed.
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
 	if s.IsClosed() {
-		return nil, io.ErrClosedPipe
+		return nil, ErrSubscriberIsClosed
 	}
 	conn, err := sqlite.OpenConn(s.ConnectionDSN)
 	if err != nil {

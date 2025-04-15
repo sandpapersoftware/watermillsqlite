@@ -3,9 +3,7 @@ package wmsqlitemodernc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
@@ -51,12 +49,10 @@ type publisher struct {
 // NewPublisher creates a [message.Publisher] instance from a [SQLiteDatabase] connection handler.
 func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publisher, error) {
 	if db == nil {
-		return nil, errors.New("database handle is nil")
+		return nil, ErrDatabaseConnectionIsNil
 	}
 	if options.InitializeSchema && isTx(db) {
-		// either use a prior schema with a tx db handle, or don't use tx with AutoInitializeSchema
-		return nil, errors.New("tried to use AutoInitializeSchema with a database handle that looks like" +
-			"an ongoing transaction; this may result in an implicit commit")
+		return nil, ErrAttemptedTableInitializationWithinTransaction
 	}
 
 	ID := uuid.New().String()
@@ -83,7 +79,7 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 // Publish pushes messages into a topic. Returns [io.ErrClosedPipe] if the publisher is closed.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	if p.IsClosed() {
-		return io.ErrClosedPipe
+		return ErrPublisherIsClosed
 	}
 	if len(messages) == 0 {
 		return nil
@@ -141,7 +137,7 @@ func (p *publisher) IsClosed() bool {
 
 func (p *publisher) Close() error {
 	if !p.IsClosed() {
-		p.ContextCancel(io.ErrClosedPipe)
+		p.ContextCancel(ErrPublisherIsClosed)
 	}
 	return nil
 }

@@ -44,7 +44,7 @@ type rawMessage struct {
 }
 
 // NextBatch fetches the next batch of messages from the database.
-// Returns [io.ErrNoProgress] is row lock could not be acquired.
+// Returns [ErrConsumerGroupIsLocked] if row lock could not be acquired.
 func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 	// TODO: or ExclusiveTransaction?
 	closeTransaction, err := sqlitex.ImmediateTransaction(s.Connection)
@@ -62,7 +62,7 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		return nil, fmt.Errorf("unable to read offset_acked value: %w", err)
 	}
 	if !ok {
-		return nil, io.ErrNoProgress
+		return nil, ErrConsumerGroupIsLocked
 	}
 	s.lockedOffset = s.stmtLockConsumerGroup.ColumnInt64(0)
 	s.lastAckedOffset = s.lockedOffset
@@ -71,7 +71,7 @@ func (s *subscription) NextBatch() (batch []rawMessage, err error) {
 		return nil, fmt.Errorf("unable to finish reading offset_acked value: %w", err)
 	}
 	if ok {
-		return nil, errors.New("lock query returned more than one row")
+		return nil, ErrMoreRowStepsThanExpected
 	}
 
 	if err = s.stmtNextMessageBatch.Reset(); err != nil {
@@ -130,7 +130,7 @@ func (s *subscription) ExtendLock() (err error) {
 		return err
 	}
 	if ok {
-		return errors.New("lock extension returned more than one row")
+		return ErrMoreRowStepsThanExpected
 	}
 	s.lockTicker.Reset(s.lockDuration)
 	s.lockedOffset = s.lastAckedOffset
@@ -149,7 +149,8 @@ func (s *subscription) ReleaseLock() (err error) {
 		return err
 	}
 	if ok {
-		return errors.New("acknowledgement returned a result")
+		// return errors.New("acknowledgement returned a result")
+		return ErrMoreRowStepsThanExpected
 	}
 	return nil
 }
@@ -221,8 +222,7 @@ func (s *subscription) Run(ctx context.Context) {
 
 		batch, err = s.NextBatch()
 		if err != nil {
-			// io.ErrNoProgress indicates failure to acquire consumer group lock
-			if !errors.Is(err, io.ErrNoProgress) && !isInterrupt(err) {
+			if !errors.Is(err, ErrConsumerGroupIsLocked) && !isInterrupt(err) {
 				s.logger.Error("next message batch query failed", err, nil)
 			}
 			continue
@@ -249,5 +249,5 @@ func isInterrupt(err error) bool {
 	if sqlite.ErrCode(err) == sqlite.ResultInterrupt {
 		return true
 	}
-	return errors.Is(err, io.ErrNoProgress)
+	return errors.Is(err, ErrConsumerGroupIsLocked)
 }

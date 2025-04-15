@@ -89,6 +89,18 @@ if err != nil {
 
 ## Development Roadmap
 
+- [ ] Three-Dots Labs acceptance requests:
+    - [ ] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466
+    - [ ] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from first
+    - [ ] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important
+    - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error
+    - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
+    - [ ] does it  make sense to have two implementations -> if so, guide which to choose for people
+    - [ ] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally
+    - [ ] options.LockTimeout < time.Second - rationale for second?
+    - [ ] consumer group - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
+    - [ ] ackChannel:   s.NackChannel, - typo?
+    - [ ] adding some logging may be useful for future - most trace of debug (everything what happens per message) - info for rare events
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics

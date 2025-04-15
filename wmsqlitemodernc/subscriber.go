@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"sync"
 	"time"
@@ -84,7 +83,7 @@ type subscriber struct {
 // NewSubscriber creates a new subscriber with the given options.
 func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscriber, error) {
 	if db == nil {
-		return nil, errors.New("database connection is nil")
+		return nil, ErrDatabaseConnectionIsNil
 	}
 	if options.ConsumerGroup != "" {
 		if err := validateTopicName(options.ConsumerGroup); err != nil {
@@ -161,7 +160,7 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 // Returns [io.ErrPipeClosed] if the subscriber is closed.
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
 	if s.IsClosed() {
-		return nil, io.ErrClosedPipe
+		return nil, ErrSubscriberIsClosed
 	}
 
 	messagesTableName := s.TopicTableNameGenerator(topic)

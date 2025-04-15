@@ -53,7 +53,7 @@ type ExpiringKeyRepositoryConfiguration struct {
 // Starts a background routine to clean up expired keys. Use as a configuration option for [middleware.Deduplicator].
 func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ middleware.ExpiringKeyRepository, err error) {
 	if config.Database == nil {
-		return nil, errors.New("SQLite connection is nil")
+		return nil, ErrDatabaseConnectionIsNil
 	}
 	if config.TableName == "" {
 		config.TableName = "watermill_expiring_keys"

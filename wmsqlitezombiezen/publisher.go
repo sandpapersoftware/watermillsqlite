@@ -2,9 +2,7 @@ package wmsqlitezombiezen
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +45,7 @@ type publisher struct {
 // NewPublisher creates a [message.Publisher] instance from a [SQLiteDatabase] connection handler.
 func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publisher, error) {
 	if conn == nil {
-		return nil, errors.New("database handle is nil")
+		return nil, ErrDatabaseConnectionIsNil
 	}
 
 	ID := uuid.New().String()
@@ -73,7 +71,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.Closed {
-		return io.ErrClosedPipe
+		return ErrPublisherIsClosed
 	}
 	if len(messages) == 0 {
 		return nil
