@@ -39,15 +39,16 @@ type publisher struct {
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
 	UUID                      string
-	DB                        SQLiteDatabase
+	DB                        SQLiteConnection
 	Logger                    watermill.LoggerAdapter
 
 	mu          sync.Mutex
 	knownTopics map[string]struct{}
 }
 
-// NewPublisher creates a [message.Publisher] instance from a [SQLiteDatabase] connection handler.
-func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publisher, error) {
+// NewPublisher creates a [message.Publisher] instance from a connection interface which could be
+// a database handle or a transaction.
+func NewPublisher(db SQLiteConnection, options PublisherOptions) (message.Publisher, error) {
 	if db == nil {
 		return nil, ErrDatabaseConnectionIsNil
 	}
@@ -76,7 +77,7 @@ func NewPublisher(db SQLiteDatabase, options PublisherOptions) (message.Publishe
 	}, nil
 }
 
-// Publish pushes messages into a topic. Returns [io.ErrClosedPipe] if the publisher is closed.
+// Publish pushes messages into a topic. Returns [ErrPublisherIsClosed] if the publisher is closed.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	if p.IsClosed() {
 		return ErrPublisherIsClosed
@@ -123,6 +124,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		strings.TrimRight(query.String(), ","),
 		values...,
 	)
+	// fmt.Println(strings.TrimRight(query.String(), ","))
 	return err
 }
 
@@ -146,7 +148,7 @@ func (p *publisher) String() string {
 	return "sqlite3-modernc-publisher-" + p.UUID
 }
 
-func isTx(db SQLiteDatabase) bool {
+func isTx(db SQLiteConnection) bool {
 	_, dbIsTx := db.(interface {
 		Commit() error
 		Rollback() error

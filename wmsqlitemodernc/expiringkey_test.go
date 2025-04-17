@@ -1,18 +1,18 @@
-package wmsqlitemodernc_test
+package wmsqlitemodernc
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/dkotik/watermillsqlite/wmsqlitemodernc"
+	"github.com/google/uuid"
 )
 
 func TestExpiringKeyRepository(t *testing.T) {
 	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
 
-	db := newTestConnection(t, ":memory:")
-	r, err := wmsqlitemodernc.NewExpiringKeyRepository(wmsqlitemodernc.ExpiringKeyRepositoryConfiguration{
+	db := newTestConnection(t, "file:"+uuid.New().String()+"?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
+	r, err := NewExpiringKeyRepository(ExpiringKeyRepositoryConfiguration{
 		Database: db,
 	})
 	if err != nil {

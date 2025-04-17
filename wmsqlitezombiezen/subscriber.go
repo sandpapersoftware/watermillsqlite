@@ -184,7 +184,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 }
 
 // Subscribe streams messages from the topic. Satisfies [watermill.Subscriber] interface.
-// Returns [io.ErrPipeClosed] if the subscriber is closed.
+// Returns [ErrSubscriberIsClosed] if the subscriber is closed.
 func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *message.Message, err error) {
 	if s.IsClosed() {
 		return nil, ErrSubscriberIsClosed

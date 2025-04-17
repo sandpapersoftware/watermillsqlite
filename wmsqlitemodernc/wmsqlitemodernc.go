@@ -19,13 +19,18 @@ func cmpOrTODO[T comparable](vals ...T) T {
 	return zero
 }
 
-// SQLiteDatabase is an interface that represents a SQLite database connection or a transaction.
+// SQLiteDatabase is an interface that represents an SQLite database.
 type SQLiteDatabase interface {
+	SQLiteConnection
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
+// SQLiteDatabase is an SQLite database connection or a transaction.
+type SQLiteConnection interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	Close() error
+	// Close() error
 }
 
 // TableNameGenerator creates a table name for a given topic either for

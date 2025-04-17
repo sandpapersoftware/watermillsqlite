@@ -66,7 +66,7 @@ func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publishe
 	}, nil
 }
 
-// Publish pushes messages into a topic. Returns [io.ErrClosedPipe] if the publisher is closed.
+// Publish pushes messages into a topic. Returns [ErrPublisherIsClosed] if the publisher is closed.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

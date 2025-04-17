@@ -1,4 +1,4 @@
-package wmsqlitemodernc_test
+package wmsqlitemodernc
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/dkotik/watermillsqlite/wmsqlitemodernc"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -20,13 +19,12 @@ func newTestConnection(t *testing.T, connectionDSN string) *sql.DB {
 	if err != nil {
 		t.Fatal("unable to create test SQLite connetion", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {
 			t.Fatal("unable to close test SQLite connetion", err)
 		}
 	})
-	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
-	// conn.SetInterrupt(t.Context().Done())
 	return db
 }
 
@@ -34,9 +32,9 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 	return func(t *testing.T, consumerGroup string) (message.Publisher, message.Subscriber) {
 		publisherDB := newTestConnection(t, connectionDSN)
 
-		pub, err := wmsqlitemodernc.NewPublisher(
+		pub, err := NewPublisher(
 			publisherDB,
-			wmsqlitemodernc.PublisherOptions{
+			PublisherOptions{
 				// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
 				ParentContext:    context.TODO(),
 				InitializeSchema: true,
@@ -51,7 +49,7 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 		})
 
 		subscriberDB := newTestConnection(t, connectionDSN)
-		sub, err := wmsqlitemodernc.NewSubscriber(subscriberDB, wmsqlitemodernc.SubscriberOptions{
+		sub, err := NewSubscriber(subscriberDB, SubscriberOptions{
 			PollInterval:     time.Millisecond * 20,
 			ConsumerGroup:    consumerGroup,
 			InitializeSchema: true,
