@@ -11,13 +11,20 @@ import (
 )
 
 func TestPublishingInTransaction(t *testing.T) {
-	t.Skip("pending issue: https://github.com/dkotik/watermillsqlite/issues/10")
-
 	db := newTestConnection(t, "file:"+uuid.New().String()+"?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
 
 	ctx, cancel := context.WithCancel(context.TODO()) // TODO: replace with t.Context() when Watermill bumps up to 1.24
 	defer cancel()
 	topic := "TestPublishingInTransaction"
+	tg := TableNameGenerators{}.WithDefaultGeneratorsInsteadOfNils()
+	if err := createTopicAndOffsetsTablesIfAbsent(
+		ctx,
+		db,
+		tg.Topic(topic),
+		tg.Offsets(topic),
+	); err != nil {
+		t.Fatal("unable to manually initialize tables:", err)
+	}
 
 	messagesToPublish := [...]*message.Message{
 		message.NewMessage("0", []byte("payload0")),
@@ -34,6 +41,7 @@ func TestPublishingInTransaction(t *testing.T) {
 		tx0,
 		PublisherOptions{
 			// ParentContext: t.Context(), // TODO: when Watermill upgrades to Golang 1.24
+			TableNameGenerators: tg,
 		},
 	)
 	if err != nil {
@@ -46,12 +54,32 @@ func TestPublishingInTransaction(t *testing.T) {
 		t.Fatal("cannot publish the messages:", err)
 	}
 	if err = tx0.Commit(); err != nil {
-		t.Fatal(err)
+		t.Fatal("failed to commit the transaction:", err)
+	}
+
+	rows, err := db.Query("SELECT * FROM " + tg.Topic(topic))
+	if err != nil {
+		t.Fatal("unable to query rows:", err)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal("rows query failed:", err)
+	}
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if count != 3 {
+		t.Fatal("expected 3 rows but got", count)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal("unable to release rows:", err)
 	}
 
 	sub, err := NewSubscriber(db, SubscriberOptions{
-		PollInterval:     time.Millisecond * 20,
-		InitializeSchema: true,
+		PollInterval:        time.Millisecond * 20,
+		LockTimeout:         time.Second,
+		InitializeSchema:    true,
+		TableNameGenerators: tg,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +99,8 @@ func TestPublishingInTransaction(t *testing.T) {
 		if msg0.UUID != messagesToPublish[0].UUID {
 			t.Errorf("expected message with UUID %s but got %s", messagesToPublish[0].UUID, msg0.UUID)
 		}
-	case <-time.After(time.Second):
+		msg0.Ack()
+	case <-time.After(time.Second * 2):
 		t.Fatal("timeout waiting for the first message")
 	}
 
@@ -80,7 +109,8 @@ func TestPublishingInTransaction(t *testing.T) {
 		if msg1.UUID != messagesToPublish[1].UUID {
 			t.Errorf("expected message with UUID %s but got %s", messagesToPublish[1].UUID, msg1.UUID)
 		}
-	case <-time.After(time.Second):
+		msg1.Ack()
+	case <-time.After(time.Second * 2):
 		t.Fatal("timeout waiting for the second message")
 	}
 
@@ -89,7 +119,8 @@ func TestPublishingInTransaction(t *testing.T) {
 		if msg2.UUID != messagesToPublish[2].UUID {
 			t.Errorf("expected message with UUID %s but got %s", messagesToPublish[2].UUID, msg2.UUID)
 		}
-	case <-time.After(time.Second):
+		msg2.Ack()
+	case <-time.After(time.Second * 2):
 		t.Fatal("timeout waiting for the third message")
 	}
 }
@@ -137,6 +168,7 @@ func testConcurrentTransactions(connectionDSN string) func(*testing.T) {
 					if !ok {
 						return
 					}
+					msg.Ack()
 					messagesReceived <- msg
 				case <-time.After(time.Second * 3):
 					return
