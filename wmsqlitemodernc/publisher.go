@@ -36,6 +36,7 @@ type PublisherOptions struct {
 type publisher struct {
 	Context                   context.Context
 	ContextCancel             context.CancelCauseFunc
+	InitializeSchema          bool
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
 	UUID                      string
@@ -62,6 +63,7 @@ func NewPublisher(db SQLiteConnection, options PublisherOptions) (message.Publis
 	return &publisher{
 		Context:                   ctx,
 		ContextCancel:             cancel,
+		InitializeSchema:          options.InitializeSchema,
 		UUID:                      ID,
 		DB:                        db,
 		TopicTableNameGenerator:   tng.Topic,
@@ -89,20 +91,22 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 
 	ctx, cancel := context.WithTimeout(p.Context, time.Second*15)
 	defer cancel()
-	p.mu.Lock()
-	if _, ok := p.knownTopics[topic]; !ok {
-		if err = createTopicAndOffsetsTablesIfAbsent(
-			ctx,
-			p.DB,
-			messagesTableName,
-			p.OffsetsTableNameGenerator(topic),
-		); err != nil {
-			p.mu.Unlock()
-			return err
+	if p.InitializeSchema {
+		p.mu.Lock()
+		if _, ok := p.knownTopics[topic]; !ok {
+			if err = createTopicAndOffsetsTablesIfAbsent(
+				ctx,
+				p.DB,
+				messagesTableName,
+				p.OffsetsTableNameGenerator(topic),
+			); err != nil {
+				p.mu.Unlock()
+				return err
+			}
+			p.knownTopics[topic] = struct{}{}
 		}
-		p.knownTopics[topic] = struct{}{}
+		p.mu.Unlock()
 	}
-	p.mu.Unlock()
 
 	query := strings.Builder{}
 	_, _ = query.WriteString("INSERT INTO '")

@@ -33,6 +33,7 @@ type PublisherOptions struct {
 type publisher struct {
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
+	InitializeSchema          bool
 	UUID                      string
 	Logger                    watermill.LoggerAdapter
 
@@ -54,6 +55,7 @@ func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publishe
 		UUID:                      ID,
 		TopicTableNameGenerator:   tng.Topic,
 		OffsetsTableNameGenerator: tng.Offsets,
+		InitializeSchema:          options.InitializeSchema,
 		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
 			watermill.NewSlogLogger(nil),
@@ -78,16 +80,18 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 	messagesTableName := p.TopicTableNameGenerator(topic)
 
-	if _, ok := p.knownTopics[topic]; !ok {
-		if err = createTopicAndOffsetsTablesIfAbsent(
-			p.Connection,
-			messagesTableName,
-			p.OffsetsTableNameGenerator(topic),
-		); err != nil {
-			p.mu.Unlock()
-			return err
+	if p.InitializeSchema {
+		if _, ok := p.knownTopics[topic]; !ok {
+			if err = createTopicAndOffsetsTablesIfAbsent(
+				p.Connection,
+				messagesTableName,
+				p.OffsetsTableNameGenerator(topic),
+			); err != nil {
+				p.mu.Unlock()
+				return err
+			}
+			p.knownTopics[topic] = struct{}{}
 		}
-		p.knownTopics[topic] = struct{}{}
 	}
 
 	query := strings.Builder{}

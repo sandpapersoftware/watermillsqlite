@@ -11,7 +11,9 @@ import (
 
 func TestPublisher(t *testing.T) {
 	conn := newTestConnection(t, ":memory:")
-	pub, err := NewPublisher(conn, PublisherOptions{})
+	pub, err := NewPublisher(conn, PublisherOptions{
+		InitializeSchema: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
