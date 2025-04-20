@@ -14,7 +14,10 @@ var disallowedTopicCharacters = regexp.MustCompile(`[^A-Za-z0-9\-\$\:\.\_]`)
 // Topics are translated into SQL tables and patched into some queries, so this is done to prevent injection as well.
 func validateTopicName(topic string) error {
 	if disallowedTopicCharacters.MatchString(topic) {
-		return fmt.Errorf("invalid topic name %s: %w", topic, ErrInvalidTopicName)
+		return fmt.Errorf("invalid topic name %q: %w", topic, ErrInvalidTopicName)
+	}
+	if topic == "" {
+		return fmt.Errorf("empty topic name %q: %w", topic, ErrInvalidTopicName)
 	}
 	return nil
 }

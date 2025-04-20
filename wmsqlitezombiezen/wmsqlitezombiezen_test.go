@@ -47,10 +47,9 @@ func NewPubSubFixture(connectionDSN string) tests.PubSubFixture {
 
 		sub, err := NewSubscriber(connectionDSN,
 			SubscriberOptions{
-				PollInterval:     time.Millisecond * 20,
-				BatchSize:        20, // TODO: increase to defaul 100
-				ConsumerGroup:    consumerGroup,
-				InitializeSchema: true,
+				PollInterval:         time.Millisecond * 20,
+				ConsumerGroupMatcher: NewStaticConsumerGroupMatcher(consumerGroup),
+				InitializeSchema:     true,
 			})
 		if err != nil {
 			t.Fatal("unable to initialize subscriber:", err)

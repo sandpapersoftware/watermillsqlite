@@ -12,7 +12,7 @@ import (
 func TestBasicSendRecieve(setup PubSubFixture) func(t *testing.T) {
 	topic := "test-basic-publish-subscribe"
 	return func(t *testing.T) {
-		pub, sub := setup(t, "")
+		pub, sub := setup(t, "testConsumerGroup")
 		t.Run("publish 20 messages", func(t *testing.T) {
 			t.Parallel()
 
@@ -82,7 +82,7 @@ func TestOnePublisherThreeSubscribers(setup PubSubFixture, messageCount int) fun
 	return func(t *testing.T) {
 		t.Parallel()
 
-		pub, sub := setup(t, "")
+		pub, sub := setup(t, "testConsumerGroup")
 		t.Run("publish messages", func(t *testing.T) {
 			t.Parallel()
 			for i := 0; i < messageCount; i++ {

@@ -17,9 +17,44 @@ import (
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
-// DefaultSubscriberLockTimeout is the default duration of the row lock
-// setting for [SubscriberOptions]. Must be in full seconds.
-const DefaultSubscriberLockTimeout = 5 * time.Second
+const (
+	// DefaultSubscriberLockTimeout is the default duration of the row lock
+	// setting for [SubscriberOptions]. Must be in full seconds.
+	DefaultSubscriberLockTimeout = 5 * time.Second
+
+	// DefaultConsumerGroupName is the default subscription
+	// consumer group name.
+	DefaultConsumerGroupName = "default"
+)
+
+// ConsumerGroupMatcher associates a subscriber with a consumer
+// group based on the subscription topic name.
+type ConsumerGroupMatcher interface {
+	// MatchTopic returns a consumer group name
+	// for a given topic. This name must follow the same
+	// naming conventions as the topic name.
+	MatchTopic(topic string) (consumerGroupName string, err error)
+}
+
+// ConsumerGroupMatcherFunc is a convenience type that
+// implements the [ConsumerGroupMatcher] interface.
+type ConsumerGroupMatcherFunc func(topic string) (consumerGroupName string, err error)
+
+// MatchTopic satisfies the [ConsumerGroupMatcher] interface.
+func (f ConsumerGroupMatcherFunc) MatchTopic(topic string) (consumerGroupName string, err error) {
+	return f(topic)
+}
+
+// NewStaticConsumerGroupMatcher creates a new [ConsumerGroupMatcher] that
+//
+//	returns the same consumer group name for any topic.
+func NewStaticConsumerGroupMatcher(consumerGroupName string) ConsumerGroupMatcher {
+	return ConsumerGroupMatcherFunc(func(topic string) (string, error) {
+		return consumerGroupName, nil
+	})
+}
+
+var defaultConsumerGroupMatcher ConsumerGroupMatcher = NewStaticConsumerGroupMatcher(DefaultConsumerGroupName)
 
 var defaultBufferPool = &sync.Pool{
 	New: func() any {
@@ -29,18 +64,20 @@ var defaultBufferPool = &sync.Pool{
 
 // SubscriberOptions defines options for creating a subscriber. Every selection has a reasonable default value.
 type SubscriberOptions struct {
-	// ConsumerGroup designates similar subscriptions to process messages from the same topic.
-	// An empty consumer group is the default value. Messages are processed in batches.
+	// ConsumerGroupMatcher differentiates message consumers within the same topic.
+	// Messages are processed in batches.
 	// Therefore, another subscriber with the same consumer group name may only obtain
 	// messages whenever it is able to acquire the row lock.
-	ConsumerGroup string
+	// Default value is a static consumer group matcher that
+	// always returns [DefaultConsumerGroupName].
+	ConsumerGroupMatcher ConsumerGroupMatcher
 
 	// BatchSize is the number of messages to read in a single batch.
 	// Default value is 100.
 	BatchSize int
 
 	// TableNameGenerators is a set of functions that generate table names for topics and offsets.
-	// Defaults to [TableNameGenerators.WithDefaultGeneratorsInsteadOfNils].
+	// Default value is [TableNameGenerators.WithDefaultGeneratorsInsteadOfNils].
 	TableNameGenerators TableNameGenerators
 
 	// PollInterval is the interval to wait between subsequent SELECT queries, if no more messages were found in the database (Prefer using the BackoffManager instead).
@@ -85,7 +122,7 @@ type subscriber struct {
 	PollInterval              time.Duration
 	LockTimeoutInSeconds      int
 	InitializeSchema          bool
-	ConsumerGroup             string
+	ConsumerGroupMatcher      ConsumerGroupMatcher
 	BatchSize                 int
 	NackChannel               func() <-chan time.Time
 	Closed                    chan struct{}
@@ -104,10 +141,8 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 	if strings.Contains(connectionDSN, ":memory:") {
 		return nil, errors.New(`sqlite: ":memory:" does not work with multiple connections, use "file::memory:?mode=memory&cache=shared`)
 	}
-	if options.ConsumerGroup != "" {
-		if err := validateTopicName(options.ConsumerGroup); err != nil {
-			return nil, fmt.Errorf("consumer group name must follow the same validation rules are topic names: %w", err)
-		}
+	if options.ConsumerGroupMatcher == nil {
+		options.ConsumerGroupMatcher = defaultConsumerGroupMatcher
 	}
 	if options.BatchSize < 0 {
 		return nil, errors.New("BatchSize must be greater than 0")
@@ -165,7 +200,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 		PollInterval:              cmpOrTODO(options.PollInterval, time.Second),
 		LockTimeoutInSeconds:      int(math.Round(options.LockTimeout.Seconds())),
 		InitializeSchema:          options.InitializeSchema,
-		ConsumerGroup:             options.ConsumerGroup,
+		ConsumerGroupMatcher:      options.ConsumerGroupMatcher,
 		BatchSize:                 cmpOrTODO(options.BatchSize, 100),
 		NackChannel:               nackChannel,
 		Closed:                    make(chan struct{}),
@@ -176,8 +211,7 @@ func NewSubscriber(connectionDSN string, options SubscriberOptions) (message.Sub
 			options.Logger,
 			watermill.NewSlogLogger(nil),
 		).With(watermill.LogFields{
-			"subscriber_id":  ID,
-			"consumer_group": options.ConsumerGroup,
+			"subscriber_id": ID,
 		}),
 		Subscriptions: &sync.WaitGroup{},
 	}, nil
@@ -189,6 +223,15 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if s.IsClosed() {
 		return nil, ErrSubscriberIsClosed
 	}
+
+	consumerGroup, err := s.ConsumerGroupMatcher.MatchTopic(topic)
+	if err != nil {
+		return nil, fmt.Errorf("unable to match topic to a consumer group: %w", err)
+	}
+	if err = validateTopicName(consumerGroup); err != nil {
+		return nil, fmt.Errorf("consumer group name must follow the same validation rules as topic names: %w", err)
+	}
+
 	conn, err := sqlite.OpenConn(s.ConnectionDSN)
 	if err != nil {
 		return nil, err
@@ -218,7 +261,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 			INSERT INTO "%s" (consumer_group, offset_acked, locked_until)
 			VALUES ('%s', 0, 0)
 			ON CONFLICT(consumer_group) DO NOTHING;`,
-			offsetsTableName, s.ConsumerGroup),
+			offsetsTableName, consumerGroup),
 		nil,
 	); err != nil {
 		return nil, fmt.Errorf("failed zero-value insertion: %w", err)
@@ -228,7 +271,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group='%s' AND locked_until < unixepoch() RETURNING offset_acked;`,
 		offsetsTableName,
 		s.LockTimeoutInSeconds,
-		s.ConsumerGroup,
+		consumerGroup,
 	))
 	if err != nil {
 		return nil, fmt.Errorf("invalid lock consumer group statement: %w", err)
@@ -237,7 +280,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		`UPDATE '%s' SET locked_until=(unixepoch()+%d), offset_acked=? WHERE consumer_group='%s' AND offset_acked=? AND locked_until>=unixepoch() RETURNING COALESCE(locked_until, 0);`,
 		offsetsTableName,
 		s.LockTimeoutInSeconds,
-		s.ConsumerGroup,
+		consumerGroup,
 	))
 	if err != nil {
 		return nil, fmt.Errorf("invalid extend lock statement: %w", err)
@@ -252,7 +295,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	}
 	stmtAcknowledgeMessages, err := conn.Prepare(fmt.Sprintf(`
 		UPDATE '%s' SET offset_acked=?, locked_until=0 WHERE consumer_group='%s' AND offset_acked=?;`,
-		offsetsTableName, s.ConsumerGroup))
+		offsetsTableName, consumerGroup))
 	if err != nil {
 		return nil, fmt.Errorf("invalid acknowledge messages statement: %w", err)
 	}
@@ -271,7 +314,8 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		bufferPool:              s.BufferPool,
 		logger: s.Logger.With(
 			watermill.LogFields{
-				"topic": topic,
+				"topic":          topic,
+				"consumer_group": consumerGroup,
 			},
 		),
 	}

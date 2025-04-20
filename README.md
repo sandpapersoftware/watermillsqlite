@@ -92,17 +92,18 @@ if err != nil {
 ## Development Roadmap
 
 - [ ] Three-Dots Labs acceptance requests:
-    - [x] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466 ([won't fix](https://github.com/dkotik/watermillsqlite/issues/10#issuecomment-2813855209))
-    - [x] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from first ([won't six](https://github.com/dkotik/watermillsqlite/commit/1d5e34856ed81744aa329237a9d7b853a6b8d6c6) because this changes breaks the official test)
+    - [x] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466 ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/10#issuecomment-2813855209))
+    - [x] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from the first ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/11)
     - [ ] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important
     - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error ([fixed](https://github.com/dkotik/watermillsqlite/commit/e09a9365230f04b14b0d63c76bc8a9c8e94436b7))
     - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
     - [x] does it  make sense to have two implementations -> if so, guide which to choose for people ([fixed](https://github.com/dkotik/watermillsqlite/commit/74d00ca378a4130b53676dc64a8dfeb277cabc34) and marked the first as vanilla and second as advanced)
     - [x] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally ([fixed](https://github.com/dkotik/watermillsqlite/issues/10))
     - [ ] options.LockTimeout < time.Second - rationale for second?
-    - [ ] consumer group - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
+    - [x] consumer groups - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
     - [ ] ackChannel:   s.NackChannel, - typo?
     - [ ] adding some logging may be useful for future - most trace of debug (everything what happens per message) - info for rare events
+    - [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics
