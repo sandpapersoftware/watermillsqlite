@@ -22,7 +22,7 @@ type subscription struct {
 	pollTicker   *time.Ticker
 	lockTicker   *time.Ticker
 	lockDuration time.Duration
-	ackChannel   func() <-chan time.Time
+	nackChannel  func() <-chan time.Time
 
 	stmtLockConsumerGroup   *sqlite.Stmt
 	stmtExtendLock          *sqlite.Stmt
@@ -186,7 +186,7 @@ func (s *subscription) Send(parent context.Context, next rawMessage) error {
 		case <-msg.Acked():
 			s.lastAckedOffset = next.Offset
 			return nil
-		case <-s.ackChannel():
+		case <-s.nackChannel():
 			s.logger.Debug("message took too long to be acknowledged", nil)
 			msg.Nack()
 			if err := s.ExtendLock(); err != nil {

@@ -231,7 +231,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		DB:           s.DB,
 		pollTicker:   time.NewTicker(s.PollInterval),
 		lockDuration: time.Second*time.Duration(s.LockTimeoutInSeconds) - (time.Millisecond * 300), // less than the lock timeout
-		ackChannel:   s.NackChannel,
+		nackChannel:  s.NackChannel,
 
 		sqlLockConsumerGroup: fmt.Sprintf(
 			`UPDATE '%s' SET locked_until=(unixepoch()+%d) WHERE consumer_group="%s" AND locked_until < unixepoch() RETURNING offset_acked`,

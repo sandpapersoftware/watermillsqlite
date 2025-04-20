@@ -101,7 +101,7 @@ if err != nil {
     - [x] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally ([fixed](https://github.com/dkotik/watermillsqlite/issues/10))
     - [ ] options.LockTimeout < time.Second - rationale for second?
     - [x] consumer groups - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
-    - [ ] ackChannel:   s.NackChannel, - typo?
+    - [x] ackChannel:   s.NackChannel, - typo? ([fixed] - yes)
     - [ ] adding some logging may be useful for future - most trace of debug (everything what happens per message) - info for rare events
     - [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
 - [ ] Add clean up routines for removing old messages from topics.

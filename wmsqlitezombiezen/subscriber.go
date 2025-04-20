@@ -304,7 +304,7 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 		Connection:   conn,
 		pollTicker:   time.NewTicker(s.PollInterval),
 		lockDuration: time.Second*time.Duration(s.LockTimeoutInSeconds) - (time.Millisecond * 300), // less than the lock timeout
-		ackChannel:   s.NackChannel,
+		nackChannel:  s.NackChannel,
 
 		stmtLockConsumerGroup:   stmtLockConsumerGroup,
 		stmtExtendLock:          stmtExtendLock,
