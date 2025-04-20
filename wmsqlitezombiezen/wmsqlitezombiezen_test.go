@@ -84,10 +84,6 @@ func TestFullConfirmityToModerncImplementation(t *testing.T) {
 	// if !testing.Short() {
 	// 	t.Skip("working on acceptance tests")
 	// }
-	// if testing.Short() {
-	// 	t.Skip("working on internal tests")
-	// }
-
 	t.Run("importedTestsFromModernc", func(t *testing.T) {
 		// fixture := NewFileDB(t)
 		fixture := NewEphemeralDB(t)

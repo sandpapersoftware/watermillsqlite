@@ -1,6 +1,7 @@
 package wmsqlitemodernc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -72,8 +73,6 @@ func NewPublisher(db SQLiteConnection, options PublisherOptions) (message.Publis
 }
 
 // Publish pushes messages into a topic. Returns [ErrPublisherIsClosed] if the publisher is closed.
-//
-// Passes down the context of the first message.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	if p.IsClosed() {
 		return ErrPublisherIsClosed
@@ -83,23 +82,15 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 	messagesTableName := p.TopicTableNameGenerator(topic)
 
-	ctx := messages[0].Context()
-	if p.InitializeSchema {
-		p.mu.Lock()
-		if _, ok := p.knownTopics[topic]; !ok {
-			if err = createTopicAndOffsetsTablesIfAbsent(
-				ctx,
-				p.DB,
-				messagesTableName,
-				p.OffsetsTableNameGenerator(topic),
-			); err != nil {
-				p.mu.Unlock()
-				return err
-			}
-			p.knownTopics[topic] = struct{}{}
-		}
-		p.mu.Unlock()
-	}
+	// Using the context of the first message
+	// fails the official tests.TestMessageCtx acceptance
+	// test. The test cancels the context before
+	// publishing messages and expects the publishing to be successful.
+	// The only way to do that is to use another context.
+	//
+	// ctx := messages[0].Context()
+	ctx := context.Background()
+	p.initializeSchema(ctx, topic, messagesTableName)
 
 	query := strings.Builder{}
 	_, _ = query.WriteString("INSERT INTO '")
@@ -121,8 +112,34 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		strings.TrimRight(query.String(), ","),
 		values...,
 	)
-	// fmt.Println(strings.TrimRight(query.String(), ","))
 	return err
+}
+
+func (p *publisher) initializeSchema(
+	parent context.Context,
+	topic string,
+	messagesTableName string,
+) (err error) {
+	if !p.InitializeSchema {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(parent, time.Second*60)
+	defer cancel()
+	p.mu.Lock()
+	if _, ok := p.knownTopics[topic]; !ok {
+		if err = createTopicAndOffsetsTablesIfAbsent(
+			ctx,
+			p.DB,
+			messagesTableName,
+			p.OffsetsTableNameGenerator(topic),
+		); err != nil {
+			p.mu.Unlock()
+			return err
+		}
+		p.knownTopics[topic] = struct{}{}
+	}
+	p.mu.Unlock()
+	return nil
 }
 
 func (p *publisher) IsClosed() bool {
