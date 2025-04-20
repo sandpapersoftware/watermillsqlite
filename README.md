@@ -92,8 +92,8 @@ if err != nil {
 ## Development Roadmap
 
 - [ ] Three-Dots Labs acceptance requests:
-    - [ ] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466
-    - [ ] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from first
+    - [x] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466 ([won't fix](https://github.com/dkotik/watermillsqlite/issues/10#issuecomment-2813855209))
+    - [x] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from first
     - [ ] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important
     - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error ([fixed](https://github.com/dkotik/watermillsqlite/commit/e09a9365230f04b14b0d63c76bc8a9c8e94436b7))
     - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later

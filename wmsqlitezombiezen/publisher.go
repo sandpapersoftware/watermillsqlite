@@ -38,8 +38,8 @@ type publisher struct {
 	Logger                    watermill.LoggerAdapter
 
 	mu          sync.Mutex
-	Closed      bool
-	Connection  *sqlite.Conn
+	closed      bool
+	connection  *sqlite.Conn
 	knownTopics map[string]struct{}
 }
 
@@ -63,16 +63,22 @@ func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publishe
 			"publisher_id": ID,
 		}),
 		mu:          sync.Mutex{},
-		Connection:  conn,
+		connection:  conn,
 		knownTopics: make(map[string]struct{}),
 	}, nil
 }
 
 // Publish pushes messages into a topic. Returns [ErrPublisherIsClosed] if the publisher is closed.
+//
+// This implementation uses a mutex to ensure safety
+// when publishing messages concurrently. It ignores
+// message context because ZombieZen SQLite treats
+// the connection as a file handle. For logging purposes,
+// it passes down the context of the first message.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.Closed {
+	if p.closed {
 		return ErrPublisherIsClosed
 	}
 	if len(messages) == 0 {
@@ -83,11 +89,10 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	if p.InitializeSchema {
 		if _, ok := p.knownTopics[topic]; !ok {
 			if err = createTopicAndOffsetsTablesIfAbsent(
-				p.Connection,
+				p.connection,
 				messagesTableName,
 				p.OffsetsTableNameGenerator(topic),
 			); err != nil {
-				p.mu.Unlock()
 				return err
 			}
 			p.knownTopics[topic] = struct{}{}
@@ -110,7 +115,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 
 	return sqlitex.ExecuteTransient(
-		p.Connection,
+		p.connection,
 		strings.TrimRight(query.String(), ",")+";",
 		&sqlitex.ExecOptions{
 			Args: arguments,
@@ -119,7 +124,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 
 func (p *publisher) Close() error {
 	p.mu.Lock()
-	p.Closed = true
+	p.closed = true
 	p.mu.Unlock()
 	return nil
 }

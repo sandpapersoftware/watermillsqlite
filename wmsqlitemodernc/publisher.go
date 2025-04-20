@@ -1,7 +1,6 @@
 package wmsqlitemodernc
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -13,12 +12,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// PublisherOptions customize message publishing behavior.
+// PublisherOptions configure message publishing behavior.
 type PublisherOptions struct {
-	// ParentContext is the context used for deriving all internal publishing operations.
-	// Default value is [context.Background].
-	ParentContext context.Context
-
 	// TableNameGenerators is a set of functions that generate table names for topics and offsets.
 	// Defaults to [TableNameGenerators.WithDefaultGeneratorsInsteadOfNils].
 	TableNameGenerators TableNameGenerators
@@ -34,8 +29,6 @@ type PublisherOptions struct {
 }
 
 type publisher struct {
-	Context                   context.Context
-	ContextCancel             context.CancelCauseFunc
 	InitializeSchema          bool
 	TopicTableNameGenerator   TableNameGenerator
 	OffsetsTableNameGenerator TableNameGenerator
@@ -44,6 +37,7 @@ type publisher struct {
 	Logger                    watermill.LoggerAdapter
 
 	mu          sync.Mutex
+	closed      bool
 	knownTopics map[string]struct{}
 }
 
@@ -59,10 +53,7 @@ func NewPublisher(db SQLiteConnection, options PublisherOptions) (message.Publis
 
 	ID := uuid.New().String()
 	tng := options.TableNameGenerators.WithDefaultGeneratorsInsteadOfNils()
-	ctx, cancel := context.WithCancelCause(cmpOrTODO(options.ParentContext, context.Background()))
 	return &publisher{
-		Context:                   ctx,
-		ContextCancel:             cancel,
 		InitializeSchema:          options.InitializeSchema,
 		UUID:                      ID,
 		DB:                        db,
@@ -74,12 +65,15 @@ func NewPublisher(db SQLiteConnection, options PublisherOptions) (message.Publis
 		).With(watermill.LogFields{
 			"publisher_id": ID,
 		}),
+
 		mu:          sync.Mutex{},
 		knownTopics: make(map[string]struct{}),
 	}, nil
 }
 
 // Publish pushes messages into a topic. Returns [ErrPublisherIsClosed] if the publisher is closed.
+//
+// Passes down the context of the first message.
 func (p *publisher) Publish(topic string, messages ...*message.Message) (err error) {
 	if p.IsClosed() {
 		return ErrPublisherIsClosed
@@ -89,8 +83,7 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 	}
 	messagesTableName := p.TopicTableNameGenerator(topic)
 
-	ctx, cancel := context.WithTimeout(p.Context, time.Second*15)
-	defer cancel()
+	ctx := messages[0].Context()
 	if p.InitializeSchema {
 		p.mu.Lock()
 		if _, ok := p.knownTopics[topic]; !ok {
@@ -133,18 +126,15 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 }
 
 func (p *publisher) IsClosed() bool {
-	select {
-	case <-p.Context.Done():
-		return true
-	default:
-		return false
-	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.closed
 }
 
 func (p *publisher) Close() error {
-	if !p.IsClosed() {
-		p.ContextCancel(ErrPublisherIsClosed)
-	}
+	p.mu.Lock()
+	p.closed = true
+	p.mu.Unlock()
 	return nil
 }
 
