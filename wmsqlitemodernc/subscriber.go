@@ -74,13 +74,23 @@ type SubscriberOptions struct {
 	// Must be non-negative. Defaults to one second.
 	PollInterval time.Duration
 
-	// LockTimeout is the duration of the row lock. If the subscription
-	// is unable to extend the lock before time out ends, it will expire.
+	// LockTimeout is the maximum duration of the row lock. If the subscription
+	// is unable to extend the lock before this time out ends, the lock will expire.
 	// Then, another subscriber in the same consumer group name may
 	// acquire the lock and continue processing messages.
 	//
-	// Defaults to [DefaultLockTimeout]. Implementation rounds the
-	// timeout to the nearest second.
+	// Duration must not be less than one second, because seconds are added
+	// to the SQLite `unixepoch` function, rounded to the nearest second.
+	// A zero duration would create a lock that expires immediately.
+	// There is no reason to set higher precision fractional duration,
+	// because the lock timeout will rarely ever trigger in a healthy system.
+	// Normally, the row lock is set to zero after each batch of messages is processed. LockTimeout might occur if a consuming node shuts down unexpectedly,
+	// before it is able to complete processing a batch of messages. Only
+	// in such rare cases the time out matters. And, it is better to set it
+	// to a higher value in order to avoid unnecessary batch re-processing.
+	// Therefore, a value lower than one second is impractical.
+	//
+	// Defaults to [DefaultLockTimeout].
 	LockTimeout time.Duration
 
 	// AckDeadline is the time to wait for acking a message.

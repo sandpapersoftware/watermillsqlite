@@ -99,9 +99,9 @@ if err != nil {
     - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
     - [x] does it  make sense to have two implementations -> if so, guide which to choose for people ([fixed](https://github.com/dkotik/watermillsqlite/commit/74d00ca378a4130b53676dc64a8dfeb277cabc34) and marked the first as vanilla and second as advanced)
     - [x] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally ([fixed](https://github.com/dkotik/watermillsqlite/issues/10))
-    - [ ] options.LockTimeout < time.Second - rationale for second?
+    - [x] options.LockTimeout < time.Second - rationale for second?
     - [x] consumer groups - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
-    - [x] ackChannel:   s.NackChannel, - typo? ([fixed] - yes)
+    - [x] ackChannel:   s.NackChannel, - typo? ([fixed](https://github.com/dkotik/watermillsqlite/commit/ae70e4c4989d07ae0d58426d623d48af342a2d10) - yes)
     - [ ] adding some logging may be useful for future - most trace of debug (everything what happens per message) - info for rare events
     - [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
 - [ ] Add clean up routines for removing old messages from topics.
