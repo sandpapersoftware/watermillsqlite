@@ -26,7 +26,7 @@ type PublisherOptions struct {
 	// It could result in an implicit commit of the transaction by a CREATE TABLE statement.
 	InitializeSchema bool
 
-	// Logger reports message publishing errors and traces. Defaults value is [watermill.NewSlogLogger].
+	// Logger reports message publishing errors and traces. Defaults value is [watermill.NopLogger].
 	Logger watermill.LoggerAdapter
 }
 
@@ -58,7 +58,7 @@ func NewPublisher(conn *sqlite.Conn, options PublisherOptions) (message.Publishe
 		InitializeSchema:          options.InitializeSchema,
 		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
-			watermill.NewSlogLogger(nil),
+			defaultLogger,
 		).With(watermill.LogFields{
 			"publisher_id": ID,
 		}),
@@ -99,10 +99,10 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 		}
 	}
 
-	query := strings.Builder{}
-	_, _ = query.WriteString("INSERT INTO '")
-	_, _ = query.WriteString(messagesTableName)
-	_, _ = query.WriteString("' (uuid, created_at, payload, metadata) VALUES ")
+	b := strings.Builder{}
+	_, _ = b.WriteString("INSERT INTO '")
+	_, _ = b.WriteString(messagesTableName)
+	_, _ = b.WriteString("' (uuid, created_at, payload, metadata) VALUES ")
 
 	arguments := make([]any, 0, len(messages)*4)
 	for _, msg := range messages {
@@ -111,12 +111,17 @@ func (p *publisher) Publish(topic string, messages ...*message.Message) (err err
 			return fmt.Errorf("unable to encode message %q metadata to JSON: %w", msg.UUID, err)
 		}
 		arguments = append(arguments, msg.UUID, time.Now().Format(time.RFC3339), msg.Payload, metadata)
-		query.WriteString(`(?,?,?,?),`)
+		b.WriteString(`(?,?,?,?),`)
 	}
 
+	query := strings.TrimRight(b.String(), ",") + ";"
+	p.Logger.Trace("Inserting messages into SQLite table", watermill.LogFields{
+		"query":      query,
+		"query_args": arguments,
+	})
 	return sqlitex.ExecuteTransient(
 		p.connection,
-		strings.TrimRight(query.String(), ",")+";",
+		query,
 		&sqlitex.ExecOptions{
 			Args: arguments,
 		})

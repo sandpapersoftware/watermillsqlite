@@ -1,5 +1,9 @@
 package wmsqlitezombiezen
 
+import "github.com/ThreeDotsLabs/watermill"
+
+var defaultLogger = watermill.NopLogger{}
+
 // TODO: replace with cmp.Or after Watermill
 // upgrades Golang version to 1.22
 func cmpOrTODO[T comparable](vals ...T) T {

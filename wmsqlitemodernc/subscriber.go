@@ -107,7 +107,7 @@ type SubscriberOptions struct {
 	// InitializeSchema option enables initializing schema on making a subscription.
 	InitializeSchema bool
 
-	// Logger reports message consumption errors and traces. Defaults to [watermill.NewSlogLogger].
+	// Logger reports message consumption errors and traces. Defaults to [watermill.NopLogger].
 	Logger watermill.LoggerAdapter
 }
 
@@ -192,7 +192,7 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 		OffsetsTableNameGenerator: tng.Offsets,
 		Logger: cmpOrTODO[watermill.LoggerAdapter](
 			options.Logger,
-			watermill.NewSlogLogger(nil),
+			defaultLogger,
 		).With(watermill.LogFields{
 			"subscriber_id": ID,
 		}),
