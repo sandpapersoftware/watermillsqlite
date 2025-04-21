@@ -11,7 +11,7 @@ import (
 
 func TestBasicSendRecieve(t *testing.T) {
 	topic := "test-basic-publish-subscribe"
-	pub, sub := NewEphemeralDB(t)(t, "")
+	pub, sub := NewEphemeralDB(t)(t, DefaultConsumerGroupName)
 	t.Run("publish 20 messages", func(t *testing.T) {
 		t.Parallel()
 

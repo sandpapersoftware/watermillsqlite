@@ -91,10 +91,11 @@ if err != nil {
 
 ## Development Roadmap
 
+- [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
 - [ ] Three-Dots Labs acceptance requests:
     - [x] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466 ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/10#issuecomment-2813855209))
     - [x] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from the first ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/11)
-    - [ ] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important
+    - [x] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important ([saved to later](https://github.com/dkotik/watermillsqlite/issues/13))
     - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error ([fixed](https://github.com/dkotik/watermillsqlite/commit/e09a9365230f04b14b0d63c76bc8a9c8e94436b7))
     - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
     - [x] does it  make sense to have two implementations -> if so, guide which to choose for people ([fixed](https://github.com/dkotik/watermillsqlite/commit/74d00ca378a4130b53676dc64a8dfeb277cabc34) and marked the first as vanilla and second as advanced)
@@ -103,7 +104,6 @@ if err != nil {
     - [x] consumer groups - it would be nice to make dynamic based on topic - usually we have closure in config that receives topic,
     - [x] ackChannel:   s.NackChannel, - typo? ([fixed](https://github.com/dkotik/watermillsqlite/commit/ae70e4c4989d07ae0d58426d623d48af342a2d10) - yes)
     - [x] adding some logging may be useful for future - most trace or debug (everything what happens per message) - info for rare events ([partially](https://github.com/dkotik/watermillsqlite/issues/12))
-    - [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
 - [ ] Add clean up routines for removing old messages from topics.
     - [ ] wmsqlitemodernc.CleanUpTopics
     - [ ] wmsqlitezombiezen.CleanUpTopics
