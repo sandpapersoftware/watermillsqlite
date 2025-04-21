@@ -91,13 +91,13 @@ if err != nil {
 
 ## Development Roadmap
 
-- [ ] bump basic tests for ZombieZen implementation; make sure basic tests can pass
+- [ ] make sure basic tests can pass by anticipating duplicates caused by lock timeouts
 - [ ] Three-Dots Labs acceptance requests:
     - [x] may be worth adding test like (but please double check if it makes sense here - it was problematic use case for Postgres): https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/pubsub_test.go#L466 ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/10#issuecomment-2813855209))
     - [x] publish - you can get context from message (will better work with tracing etc.) - it's tricky when someone is publishing multiple messages - usually we just get context from the first ([won't fix, see discussion](https://github.com/dkotik/watermillsqlite/issues/11)
     - [x] NIT: it would be nice to add abstraction over queries (like in SQL) - so someone could customize it, but not very important ([saved to later](https://github.com/dkotik/watermillsqlite/issues/13))
     - [x] NIT: return io.ErrClosedPipe - maybe better to define custom error for that? ClosedPipe probably a bit different kind of error ([fixed](https://github.com/dkotik/watermillsqlite/commit/e09a9365230f04b14b0d63c76bc8a9c8e94436b7))
-    - [ ] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later
+    - [x] would be nice to add benchmark - may be good thing for sqlite -> https://github.com/ThreeDotsLabs/watermill-benchmark feel free to make draft PR, we can replace repo later ([opened pull request](https://github.com/ThreeDotsLabs/watermill-benchmark/pull/10))
     - [x] does it  make sense to have two implementations -> if so, guide which to choose for people ([fixed](https://github.com/dkotik/watermillsqlite/commit/74d00ca378a4130b53676dc64a8dfeb277cabc34) and marked the first as vanilla and second as advanced)
     - [x] NewPublisher(db SQLiteDatabase -> it may be nice if it can accept just transaction like in https://github.com/ThreeDotsLabs/watermill-sql/blob/master/pkg/sql/publisher.go#L54 - it allows to add events transactionally ([fixed](https://github.com/dkotik/watermillsqlite/issues/10))
     - [x] options.LockTimeout < time.Second - rationale for second? ([explanation added](https://github.com/dkotik/watermillsqlite/commit/240ec78d2c0e85af3ba84054dbb12621a6aeeae3))
