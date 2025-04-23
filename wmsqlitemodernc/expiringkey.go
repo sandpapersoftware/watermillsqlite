@@ -39,19 +39,17 @@ type ExpiringKeyRepositoryConfiguration struct {
 	// Defaults to 15 seconds.
 	CleanUpInterval time.Duration
 
-	// CleanUpContext is the context used for cleaning up expired keys.
-	// When this context is canceled, the cleanup process will end.
-	// Defaults to [context.Background].
-	CleanUpContext context.Context
-
 	// CleanUpLogger tracks any problems that might emerge when cleaning up expired keys.
 	// Defaults to [watermill.NewStdLogger].
 	CleanUpLogger watermill.LoggerAdapter
 }
 
 // NewExpiringKeyRepository creates a repository that tracks key duplicates within a certain time frame.
-// Starts a background routine to clean up expired keys. Use as a configuration option for [middleware.Deduplicator].
-func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ middleware.ExpiringKeyRepository, err error) {
+// Starts a context-bound background routine to clean up expired keys. Use as a configuration option for [middleware.Deduplicator].
+func NewExpiringKeyRepository(ctx context.Context, config ExpiringKeyRepositoryConfiguration) (_ middleware.ExpiringKeyRepository, err error) {
+	if ctx == nil {
+		return nil, errors.New("context is nil")
+	}
 	if config.Database == nil {
 		return nil, ErrDatabaseConnectionIsNil
 	}
@@ -66,15 +64,12 @@ func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ midd
 	if config.CleanUpInterval == 0 {
 		config.CleanUpInterval = 15 * time.Second
 	}
-	if config.CleanUpContext == nil {
-		config.CleanUpContext = context.Background()
-	}
 	if config.CleanUpLogger == nil {
 		config.CleanUpLogger = watermill.NopLogger{}
 	}
 
 	if _, err = config.Database.ExecContext(
-		config.CleanUpContext,
+		ctx,
 		`CREATE TABLE IF NOT EXISTS '`+config.TableName+`' (
 			key TEXT PRIMARY KEY NOT NULL,
 			expires_at INTEGER NOT NULL
@@ -109,7 +104,7 @@ func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ midd
 				}
 			}
 		}
-	}(config.CleanUpContext, r, time.NewTicker(config.CleanUpInterval), config.CleanUpLogger)
+	}(ctx, r, time.NewTicker(config.CleanUpInterval), config.CleanUpLogger)
 
 	return r, nil
 }

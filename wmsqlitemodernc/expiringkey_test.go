@@ -16,10 +16,9 @@ func TestExpiringKeyRepository(t *testing.T) {
 	t.Cleanup(cancel)
 
 	db := newTestConnection(t, "file:"+uuid.New().String()+"?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
-	r, err := NewExpiringKeyRepository(ExpiringKeyRepositoryConfiguration{
-		Database:       db,
-		CleanUpContext: ctx,
-		CleanUpLogger:  watermill.NewSlogLogger(slog.Default()),
+	r, err := NewExpiringKeyRepository(ctx, ExpiringKeyRepositoryConfiguration{
+		Database:      db,
+		CleanUpLogger: watermill.NewSlogLogger(slog.Default()),
 	})
 	if err != nil {
 		t.Fatal(err)
