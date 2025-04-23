@@ -41,7 +41,8 @@ type ExpiringKeyRepositoryConfiguration struct {
 }
 
 // NewExpiringKeyRepository creates a repository that tracks key duplicates within a certain time frame.
-// Starts a background routine to clean up expired keys. Use as a configuration option for [middleware.Deduplicator].
+// Cleans up expired keys periodically at an interval when checking for duplicates. Does not create a go routine.
+// Use as a configuration option for [middleware.Deduplicator].
 func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ middleware.ExpiringKeyRepository, finalizer func() error, err error) {
 	if config.Connection == nil {
 		return nil, nil, ErrDatabaseConnectionIsNil

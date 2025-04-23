@@ -8,6 +8,8 @@ import (
 
 func TestExpiringKeyRepository(t *testing.T) {
 	// TODO: replace with t.Context() after Watermill bumps to Golang 1.24
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 
 	conn := newTestConnection(t, ":memory:")
 	r, finalizer, err := NewExpiringKeyRepository(ExpiringKeyRepositoryConfiguration{
@@ -22,14 +24,14 @@ func TestExpiringKeyRepository(t *testing.T) {
 		}
 	})
 
-	isDuplicate, err := r.IsDuplicate(context.TODO(), "test_key")
+	isDuplicate, err := r.IsDuplicate(ctx, "test_key")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if isDuplicate {
 		t.Fatal("key should not be duplicate")
 	}
-	isDuplicate, err = r.IsDuplicate(context.TODO(), "test_key")
+	isDuplicate, err = r.IsDuplicate(ctx, "test_key")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -70,7 +70,7 @@ func NewExpiringKeyRepository(config ExpiringKeyRepositoryConfiguration) (_ midd
 		config.CleanUpContext = context.Background()
 	}
 	if config.CleanUpLogger == nil {
-		config.CleanUpLogger = watermill.NewStdLogger(true, false)
+		config.CleanUpLogger = watermill.NopLogger{}
 	}
 
 	if _, err = config.Database.ExecContext(
