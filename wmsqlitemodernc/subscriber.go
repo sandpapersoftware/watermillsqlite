@@ -14,9 +14,18 @@ import (
 )
 
 const (
+	// DefaultMessageBatchSize is the default number of messages
+	// for [SubscriberOptions] that a subscription
+	// will collect when consuming messages from the database.
+	DefaultMessageBatchSize = 100
+
 	// DefaultSubscriberLockTimeout is the default duration of the row lock
 	// setting for [SubscriberOptions]. Must be in full seconds.
 	DefaultSubscriberLockTimeout = 5 * time.Second
+
+	// DefaultAckDeadline is the default duration of the message acknowledgement deadline
+	// setting for [SubscriberOptions].
+	DefaultAckDeadline = 30 * time.Second
 
 	// DefaultConsumerGroupName is the default subscription
 	// consumer group name.
@@ -63,7 +72,7 @@ type SubscriberOptions struct {
 	ConsumerGroupMatcher ConsumerGroupMatcher
 
 	// BatchSize is the number of messages to read in a single batch.
-	// Default value is 100.
+	// Default value is [DefaultMessageBatchSize].
 	BatchSize int
 
 	// TableNameGenerators is a set of functions that generate table names for topics and offsets.
@@ -90,7 +99,7 @@ type SubscriberOptions struct {
 	// to a higher value in order to avoid unnecessary batch re-processing.
 	// Therefore, a value lower than one second is impractical.
 	//
-	// Defaults to [DefaultLockTimeout].
+	// Default value is [DefaultLockTimeout].
 	LockTimeout time.Duration
 
 	// AckDeadline is the time to wait for acking a message.
@@ -98,10 +107,11 @@ type SubscriberOptions struct {
 	//
 	// When messages are read in bulk, this time is calculated for each message separately.
 	//
-	// If you want to disable ack deadline, set it to 0.
-	// Warning: when ack deadline is disabled, messages may block the subscriber from reading new messages.
+	// If you want to disable the acknowledgement deadline, set it to 0.
+	// Warning: when acknowledgement deadline is disabled, messages may block and
+	// prevent the subscriber from accepting new messages.
 	//
-	// Must be non-negative. Default value is 30 seconds.
+	// Must be non-negative. Default value is [DefaultAckDeadline].
 	AckDeadline *time.Duration
 
 	// InitializeSchema option enables initializing schema on making a subscription.
@@ -157,7 +167,7 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 
 	nackChannel := func() <-chan time.Time {
 		// by default, Nack messages if they take longer than 30 seconds to process
-		return time.After(time.Second * 30)
+		return time.After(DefaultAckDeadline)
 	}
 	if options.AckDeadline != nil {
 		deadline := *options.AckDeadline
@@ -185,7 +195,7 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 		LockTimeoutInSeconds:      int(math.Round(options.LockTimeout.Seconds())),
 		InitializeSchema:          options.InitializeSchema,
 		ConsumerGroupMatcher:      options.ConsumerGroupMatcher,
-		BatchSize:                 cmpOrTODO(options.BatchSize, 100),
+		BatchSize:                 cmpOrTODO(options.BatchSize, DefaultMessageBatchSize),
 		NackChannel:               nackChannel,
 		Closed:                    make(chan struct{}),
 		TopicTableNameGenerator:   tng.Topic,

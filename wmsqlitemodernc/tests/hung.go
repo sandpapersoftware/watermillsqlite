@@ -50,6 +50,9 @@ func hungDestinationChannel(pub message.Publisher, sub message.Subscriber) func(
 			t.Fatal(err)
 		}
 
+		// TODO: this should use a constant lock duration
+		// and this test must be turned into a sync test
+		// to avoid waiting for the whole duration
 		<-time.After(time.Second * 6)
 		// first subscriber loses lock after grace period
 		// but keeps the first message over its output channel
