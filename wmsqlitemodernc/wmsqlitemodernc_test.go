@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	"github.com/dkotik/watermillsqlite/wmsqlitemodernc/tests"
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -95,4 +96,52 @@ func TestOfficialImplementationAcceptance(t *testing.T) {
 	}
 	t.Run("file bound transactions", tests.OfficialImplementationAcceptance(NewFileDB(t)))
 	t.Run("memory bound transactions", tests.OfficialImplementationAcceptance(NewEphemeralDB(t)))
+}
+
+func BenchmarkAll(b *testing.B) {
+	fastest := gochannel.NewGoChannel(gochannel.Config{
+		// Output channel buffer size.
+		// OutputChannelBuffer int64
+
+		// If persistent is set to true, when subscriber subscribes to the topic,
+		// it will receive all previously produced messages.
+		//
+		// All messages are persisted to the memory (simple slice),
+		// so be aware that with large amount of messages you can go out of the memory.
+		Persistent: true,
+
+		// When true, Publish will block until subscriber Ack's the message.
+		// If there are no subscribers, Publish will not block (also when Persistent is true).
+		BlockPublishUntilSubscriberAck: false,
+	}, nil)
+
+	b.Run("go channel publishing", tests.NewPublishingBenchmark(fastest))
+	b.Run("go channel subscription", tests.NewSubscriptionBenchmark(fastest))
+
+	db, err := sql.Open("sqlite", "file:"+uuid.New().String()+"?mode=memory&journal_mode=WAL&busy_timeout=1000&secure_delete=true&foreign_keys=true&cache=shared")
+	if err != nil {
+		b.Fatal("unable to create test SQLite connetion", err)
+	}
+	db.SetMaxOpenConns(1)
+	b.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			b.Fatal("unable to close test SQLite connetion", err)
+		}
+	})
+
+	pub, err := NewPublisher(db, PublisherOptions{
+		InitializeSchema: true,
+	})
+	if err != nil {
+		b.Fatal("unable to create test publisher", err)
+	}
+	sub, err := NewSubscriber(db, SubscriberOptions{
+		BatchSize:    700,
+		PollInterval: time.Millisecond * 10,
+	})
+	if err != nil {
+		b.Fatal("unable to create test subscriber", err)
+	}
+	b.Run("SQLite publishing to memory", tests.NewPublishingBenchmark(pub))
+	b.Run("SQLite subscription from memory", tests.NewSubscriptionBenchmark(sub))
 }

@@ -7,3 +7,6 @@ test:
 test_race:
 	(cd wmsqlitemodernc && go test -v -count=5 -failfast -timeout=18m -race ./...)
 	(cd wmsqlitezombiezen && go test -v -count=5 -failfast -timeout=18m -race ./...)
+benchmark:
+	(cd wmsqlitemodernc && go test -bench=. -run=^BenchmarkAll$$ -timeout=15s)
+	(cd wmsqlitezombiezen && go test -bench=. -run=^BenchmarkAll$$ -timeout=15s)
