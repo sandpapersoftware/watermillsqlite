@@ -14,7 +14,9 @@ import (
 
 type subscription struct {
 	DB           SQLiteDatabase
-	pollTicker   *time.Ticker
+	pollInterval time.Duration
+	notifierC    <-chan string
+	topic        string
 	lockTicker   *time.Ticker
 	lockDuration time.Duration
 	nackChannel  func() <-chan time.Time
@@ -167,34 +169,44 @@ func (s *subscription) Run(ctx context.Context) {
 		err   error
 	)
 
+	pollTicker := time.NewTicker(s.pollInterval)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.pollTicker.C:
+		case <-pollTicker.C:
+		case topic := <-s.notifierC:
+			if s.topic != topic {
+				continue
+			}
+			pollTicker.Reset(s.pollInterval)
 		}
 
 		batch, err = s.NextBatch(ctx)
 		if err != nil {
-			if !errors.Is(err, context.Canceled) {
-				s.logger.Error("next message batch query failed", err, nil)
+			if errors.Is(err, context.Canceled) {
+				return
 			}
+			s.logger.Error("next message batch query failed", err, nil)
 			continue
 		}
 
 		for _, next := range batch {
 			if err = s.Send(ctx, next); err != nil {
-				if !errors.Is(err, context.Canceled) {
-					s.logger.Error("failed to process queued message", err, nil)
+				if errors.Is(err, context.Canceled) {
+					return
 				}
+				s.logger.Error("failed to process queued message", err, nil)
 				continue
 			}
 		}
 
 		if err = s.ReleaseLock(ctx); err != nil {
-			if !errors.Is(err, context.Canceled) {
-				s.logger.Error("failed to acknowledge processed messages", err, nil)
+			if errors.Is(err, context.Canceled) {
+				return
 			}
+			s.logger.Error("failed to acknowledge processed messages", err, nil)
 		}
 	}
 }

@@ -83,6 +83,10 @@ type SubscriberOptions struct {
 	// Must be non-negative. Defaults to one second.
 	PollInterval time.Duration
 
+	// Notifier notifies the subscriber about new messages in a topic.
+	// To notify a certain topic subscriber, the channel must yield the topic name.
+	Notifier chan string
+
 	// LockTimeout is the maximum duration of the row lock. If the subscription
 	// is unable to extend the lock before this time out ends, the lock will expire.
 	// Then, another subscriber in the same consumer group name may
@@ -125,6 +129,8 @@ type subscriber struct {
 	DB                        SQLiteDatabase
 	UUID                      string
 	PollInterval              time.Duration
+	Notifier                  chan string
+	Backoff                   func(err error, batchSize int) time.Duration
 	LockTimeoutInSeconds      int
 	InitializeSchema          bool
 	ConsumerGroupMatcher      ConsumerGroupMatcher
@@ -157,6 +163,14 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 	if options.PollInterval > time.Hour*24*7 {
 		return nil, errors.New("PollInterval must be less than a week")
 	}
+	if options.PollInterval == 0 {
+		options.PollInterval = time.Second
+	}
+
+	if options.Notifier == nil {
+		options.Notifier = make(chan string)
+	}
+
 	if options.LockTimeout < time.Second {
 		if options.LockTimeout == 0 {
 			options.LockTimeout = DefaultSubscriberLockTimeout
@@ -191,7 +205,8 @@ func NewSubscriber(db SQLiteDatabase, options SubscriberOptions) (message.Subscr
 	return &subscriber{
 		DB:                        db,
 		UUID:                      ID,
-		PollInterval:              cmpOrTODO(options.PollInterval, time.Second),
+		PollInterval:              options.PollInterval,
+		Notifier:                  options.Notifier,
 		LockTimeoutInSeconds:      int(math.Round(options.LockTimeout.Seconds())),
 		InitializeSchema:          options.InitializeSchema,
 		ConsumerGroupMatcher:      options.ConsumerGroupMatcher,
@@ -249,7 +264,9 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 
 	sub := &subscription{
 		DB:           s.DB,
-		pollTicker:   time.NewTicker(s.PollInterval),
+		pollInterval: s.PollInterval,
+		notifierC:    s.Notifier,
+		topic:        topic,
 		lockDuration: time.Second*time.Duration(s.LockTimeoutInSeconds) - (time.Millisecond * 300), // less than the lock timeout
 		nackChannel:  s.NackChannel,
 
