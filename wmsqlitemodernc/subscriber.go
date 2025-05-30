@@ -236,9 +236,9 @@ func (s *subscriber) Subscribe(ctx context.Context, topic string) (c <-chan *mes
 	if err != nil {
 		return nil, fmt.Errorf("unable to match topic to a consumer group: %w", err)
 	}
-	if err = validateTopicName(consumerGroup); err != nil {
-		return nil, fmt.Errorf("consumer group name must follow the same validation rules as topic names: %w", err)
-	}
+	//if err = validateTopicName(consumerGroup); err != nil {
+	//	return nil, fmt.Errorf("consumer group name must follow the same validation rules as topic names: %w", err)
+	//}
 
 	messagesTableName := s.TopicTableNameGenerator(topic)
 	offsetsTableName := s.OffsetsTableNameGenerator(topic)
