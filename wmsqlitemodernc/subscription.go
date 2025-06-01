@@ -77,7 +77,15 @@ func (s *subscription) NextBatch(ctx context.Context) (batch []rawMessage, err e
 	if err != nil {
 		return nil, fmt.Errorf("unable to query next message batch: %w", err)
 	}
-	return buildBatch(rows)
+
+	batch, err = buildBatch(rows)
+	if err != nil {
+		return nil, fmt.Errorf("unable to build message batch: %w", err)
+	}
+	if len(batch) == 0 {
+		return nil, tx.Rollback()
+	}
+	return batch, nil
 }
 
 func buildBatch(rows *sql.Rows) (batch []rawMessage, err error) {
